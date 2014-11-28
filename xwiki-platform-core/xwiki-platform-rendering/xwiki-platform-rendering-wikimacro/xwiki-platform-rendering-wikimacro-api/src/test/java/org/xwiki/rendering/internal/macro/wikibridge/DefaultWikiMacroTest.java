@@ -55,6 +55,7 @@ import org.xwiki.script.ScriptContextManager;
 import org.xwiki.test.jmock.AbstractComponentTestCase;
 import org.xwiki.velocity.VelocityEngine;
 import org.xwiki.velocity.VelocityManager;
+import org.xwiki.wiki.descriptor.WikiDescriptorManager;
 
 /**
  * Unit tests for {@link DefaultWikiMacro}.
@@ -78,6 +79,10 @@ public class DefaultWikiMacroTest extends AbstractComponentTestCase
 
     private WikiMacroFactory mockWikiMacroFactory;
 
+    private WikiDescriptorManager mockWikiDescriptorManager;
+
+    private Map<String, Object> xcontext;
+
     @Override
     @Before
     public void setUp() throws Exception
@@ -94,11 +99,11 @@ public class DefaultWikiMacroTest extends AbstractComponentTestCase
 
         // Make sure the old XWiki Context is set up in the Execution Context since it's used in
         // DefaultWikiMacro.execute().
-        Map<String, Object> xcontext = new HashMap<String, Object>();
+        this.xcontext = new HashMap<String, Object>();
         Execution execution = getComponentManager().getInstance(Execution.class);
-        execution.getContext().setProperty("xwikicontext", xcontext);
+        execution.getContext().setProperty("xwikicontext", this.xcontext);
         ScriptContextManager scm = getComponentManager().getInstance(ScriptContextManager.class);
-        scm.getScriptContext().setAttribute("xcontext", xcontext, ScriptContext.ENGINE_SCOPE);
+        scm.getScriptContext().setAttribute("xcontext", this.xcontext, ScriptContext.ENGINE_SCOPE);
 
         getMockery().checking(new Expectations()
         {
@@ -127,6 +132,8 @@ public class DefaultWikiMacroTest extends AbstractComponentTestCase
     {
         super.registerComponents();
 
+        this.mockWikiDescriptorManager = registerMockComponent(WikiDescriptorManager.class);
+
         // some tests fail because the lookup of this component fails (the implementation is defined in xwiki-core)
         this.mockWikiMacroFactory = registerMockComponent(WikiMacroFactory.class);
     }
@@ -147,6 +154,8 @@ public class DefaultWikiMacroTest extends AbstractComponentTestCase
 
         // Note: We're using XHTML as the output syntax just to make it easy for asserting.
         Assert.assertEquals("<p>This is <strong>bold</strong></p>", printer.toString());
+
+        Assert.assertFalse(this.xcontext.containsKey("macro"));
     }
 
     /**
@@ -264,7 +273,7 @@ public class DefaultWikiMacroTest extends AbstractComponentTestCase
 
         // Hack into velocity context.
         Execution execution = getComponentManager().getInstance(Execution.class);
-        Map< ? , ? > xwikiContext = (Map< ? , ? >) execution.getContext().getProperty("xwikicontext");
+        Map<?, ?> xwikiContext = (Map<?, ?>) execution.getContext().getProperty("xwikicontext");
         final VelocityContext vContext = new VelocityContext();
         vContext.put("xcontext", xwikiContext);
 

@@ -29,6 +29,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.inject.Named;
+
 import org.apache.commons.lang3.StringUtils;
 import org.codehaus.groovy.runtime.InvokerHelper;
 import org.slf4j.Logger;
@@ -39,12 +41,16 @@ import org.xwiki.cache.CacheManager;
 import org.xwiki.cache.DisposableCacheValue;
 import org.xwiki.cache.config.CacheConfiguration;
 import org.xwiki.cache.eviction.LRUEvictionConfiguration;
+import org.xwiki.component.annotation.Component;
+import org.xwiki.component.annotation.InstantiationStrategy;
+import org.xwiki.component.descriptor.ComponentInstantiationStrategy;
 import org.xwiki.component.manager.ComponentLookupException;
 import org.xwiki.xml.XMLUtils;
 
 import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.XWikiException;
 import com.xpn.xwiki.api.Context;
+import com.xpn.xwiki.api.DeprecatedContext;
 import com.xpn.xwiki.api.Document;
 import com.xpn.xwiki.api.Util;
 import com.xpn.xwiki.api.XWiki;
@@ -55,6 +61,9 @@ import com.xpn.xwiki.render.XWikiVirtualMacro;
 import com.xpn.xwiki.web.Utils;
 import com.xpn.xwiki.web.XWikiRequest;
 
+@Component
+@Named("groovy")
+@InstantiationStrategy(ComponentInstantiationStrategy.PER_LOOKUP)
 public class XWikiGroovyRenderer implements XWikiRenderer, XWikiInterpreter
 {
     private static final Logger LOGGER = LoggerFactory.getLogger(XWikiGroovyRenderer.class);
@@ -62,6 +71,12 @@ public class XWikiGroovyRenderer implements XWikiRenderer, XWikiInterpreter
     private Cache<Template> cache;
 
     private Cache<CachedGroovyClass> classCache;
+
+    @Override
+    public String getId()
+    {
+        return "groovy";
+    }
 
     @Override
     public void flushCache()
@@ -92,10 +107,9 @@ public class XWikiGroovyRenderer implements XWikiRenderer, XWikiInterpreter
 
             // We put the com.xpn.xwiki.api.Context object into the context and not the com.xpn.xwiki.XWikiContext one
             // which is for internal use only. In this manner we control what the user can access.
+            gcontext.put("xcontext", new Context(context));
             // "context" binding is deprecated since 1.9.1
-            Context apiContext = new Context(context);
-            gcontext.put("context", apiContext);
-            gcontext.put("xcontext", apiContext);
+            gcontext.put("context", new DeprecatedContext(context));
 
             gcontext.put("util", new Util(context.getWiki(), context));
 

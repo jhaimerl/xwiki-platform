@@ -40,6 +40,7 @@ import org.xwiki.model.reference.DocumentReferenceResolver;
 import org.xwiki.model.reference.EntityReference;
 import org.xwiki.model.reference.SpaceReference;
 
+import com.google.common.base.Objects;
 import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.XWikiException;
 import com.xpn.xwiki.doc.XWikiDocument;
@@ -87,17 +88,21 @@ public class BaseClass extends BaseCollection<DocumentReference> implements Clas
     private boolean isDirty = true;
 
     /**
-     * The owner document, if this object was obtained from a document.
-     */
-    private transient XWikiDocument ownerDocument;
-
-    /**
      * Used to resolve a string into a proper Document Reference using the current document's reference to fill the
      * blanks, except for the page name for which the default page name is used instead and for the wiki name for which
      * the current wiki is used instead of the current document reference's wiki.
      */
-    private DocumentReferenceResolver<String> currentMixedDocumentReferenceResolver = Utils.getComponent(
-        DocumentReferenceResolver.TYPE_STRING, "currentmixed");
+    private DocumentReferenceResolver<String> currentMixedDocumentReferenceResolver;
+
+    private DocumentReferenceResolver<String> getCurrentMixedDocumentReferenceResolver()
+    {
+        if (this.currentMixedDocumentReferenceResolver == null) {
+            this.currentMixedDocumentReferenceResolver =
+                Utils.getComponent(DocumentReferenceResolver.TYPE_STRING, "currentmixed");
+        }
+
+        return this.currentMixedDocumentReferenceResolver;
+    }
 
     @Override
     public DocumentReference getReference()
@@ -138,13 +143,13 @@ public class BaseClass extends BaseCollection<DocumentReference> implements Clas
 
             if (reference != null) {
                 EntityReference relativeReference =
-                    this.relativeEntityReferenceResolver.resolve(name, EntityType.DOCUMENT);
+                    getRelativeEntityReferenceResolver().resolve(name, EntityType.DOCUMENT);
                 reference =
                     new DocumentReference(relativeReference.extractReference(EntityType.DOCUMENT).getName(),
                         new SpaceReference(relativeReference.extractReference(EntityType.SPACE).getName(), reference
                             .getParent().getParent()));
             } else {
-                reference = this.currentMixedDocumentReferenceResolver.resolve(name);
+                reference = getCurrentMixedDocumentReferenceResolver().resolve(name);
             }
             setDocumentReference(reference);
         }
@@ -366,14 +371,14 @@ public class BaseClass extends BaseCollection<DocumentReference> implements Clas
      * @deprecated since 2.2.3 use {@link #fromMap(java.util.Map, com.xpn.xwiki.objects.BaseCollection)}
      */
     @Deprecated
-    public BaseCollection fromMap(Map<String, ? > map, XWikiContext context) throws XWikiException
+    public BaseCollection fromMap(Map<String, ?> map, XWikiContext context) throws XWikiException
     {
         BaseCollection object = newObject(context);
 
         return fromMap(map, object);
     }
 
-    public BaseCollection fromMap(Map<String, ? > map, BaseCollection object)
+    public BaseCollection fromMap(Map<String, ?> map, BaseCollection object)
     {
         for (PropertyClass property : (Collection<PropertyClass>) getFieldList()) {
             String name = property.getName();
@@ -396,7 +401,7 @@ public class BaseClass extends BaseCollection<DocumentReference> implements Clas
         return object;
     }
 
-    public BaseCollection fromValueMap(Map<String, ? > map, BaseCollection object)
+    public BaseCollection fromValueMap(Map<String, ?> map, BaseCollection object)
     {
         for (PropertyClass property : (Collection<PropertyClass>) getFieldList()) {
             String name = property.getName();
@@ -448,7 +453,8 @@ public class BaseClass extends BaseCollection<DocumentReference> implements Clas
             return false;
         }
 
-        if (!getCustomMapping().equals(bclass.getCustomMapping())) {
+        if (!Objects.equal(this.customMapping, bclass.customMapping)
+            && !getCustomMapping().equals(bclass.getCustomMapping())) {
             return false;
         }
 
@@ -579,16 +585,18 @@ public class BaseClass extends BaseCollection<DocumentReference> implements Clas
                 Element pcel = list.get(i);
                 String name = pcel.getName();
                 String classType = pcel.element("classType").getText();
+
                 PropertyClassProvider provider = null;
-                try {
-                    // First try to use the specified class type as hint.
+                // First try to use the specified class type as hint.
+                if (Utils.getComponentManager().hasComponent(PropertyClassProvider.class, classType)) {
                     provider = Utils.getComponent(PropertyClassProvider.class, classType);
-                } catch (Exception e) {
+                } else {
                     // In previous versions the class type was the full Java class name of the property class
                     // implementation. Extract the hint by removing the Java package prefix and the Class suffix.
                     classType = StringUtils.removeEnd(StringUtils.substringAfterLast(classType, "."), "Class");
                     provider = Utils.getComponent(PropertyClassProvider.class, classType);
                 }
+
                 // We should use PropertyClassInterface (instead of PropertyClass, its default implementation) but it
                 // doesn't have the fromXML method and adding it breaks the backwards compatibility. We make the
                 // assumption that all property classes extend PropertyClass.
@@ -1239,78 +1247,27 @@ public class BaseClass extends BaseCollection<DocumentReference> implements Clas
         BaseClass previousClass = (BaseClass) previousElement;
         BaseClass newClass = (BaseClass) newElement;
 
-        setCustomClass(MergeUtils.mergeCharacters(previousClass.getCustomClass(), newClass.getCustomClass(),
+        setCustomClass(MergeUtils.mergeOject(previousClass.getCustomClass(), newClass.getCustomClass(),
             getCustomClass(), mergeResult));
 
-        setCustomMapping(MergeUtils.mergeCharacters(previousClass.getCustomMapping(), newClass.getCustomMapping(),
+        setCustomMapping(MergeUtils.mergeOject(previousClass.getCustomMapping(), newClass.getCustomMapping(),
             getCustomMapping(), mergeResult));
 
-        setDefaultWeb(MergeUtils.mergeCharacters(previousClass.getDefaultWeb(), newClass.getDefaultWeb(),
-            getDefaultWeb(), mergeResult));
+        setDefaultWeb(MergeUtils.mergeOject(previousClass.getDefaultWeb(), newClass.getDefaultWeb(), getDefaultWeb(),
+            mergeResult));
 
-        setDefaultViewSheet(MergeUtils.mergeCharacters(previousClass.getDefaultViewSheet(),
-            newClass.getDefaultViewSheet(), getDefaultViewSheet(), mergeResult));
+        setDefaultViewSheet(MergeUtils.mergeOject(previousClass.getDefaultViewSheet(), newClass.getDefaultViewSheet(),
+            getDefaultViewSheet(), mergeResult));
 
-        setDefaultEditSheet(MergeUtils.mergeCharacters(previousClass.getDefaultEditSheet(),
-            newClass.getDefaultEditSheet(), getDefaultEditSheet(), mergeResult));
+        setDefaultEditSheet(MergeUtils.mergeOject(previousClass.getDefaultEditSheet(), newClass.getDefaultEditSheet(),
+            getDefaultEditSheet(), mergeResult));
 
-        setNameField(MergeUtils.mergeCharacters(previousClass.getNameField(), newClass.getNameField(), getNameField(),
+        setNameField(MergeUtils.mergeOject(previousClass.getNameField(), newClass.getNameField(), getNameField(),
             mergeResult));
 
         // Properties
 
-        List<ObjectDiff> classDiff = newClass.getDiff(previousClass, context);
-        for (ObjectDiff diff : classDiff) {
-            PropertyClass propertyResult = (PropertyClass) getField(diff.getPropName());
-            PropertyClass previousProperty = (PropertyClass) previousClass.getField(diff.getPropName());
-            PropertyClass newProperty = (PropertyClass) newClass.getField(diff.getPropName());
-
-            if (diff.getAction() == ObjectDiff.ACTION_PROPERTYADDED) {
-                if (propertyResult == null) {
-                    // Add if none has been added by user already
-                    addField(diff.getPropName(),
-                        configuration.isProvidedVersionsModifiables() ? newClass.getField(diff.getPropName())
-                            : newClass.getField(diff.getPropName()).clone());
-                    mergeResult.setModified(true);
-                } else if (!propertyResult.equals(newProperty)) {
-                    // XXX: collision between DB and new: property to add but already exists in the DB
-                    mergeResult.getLog().error("Collision found on class property [{}]", newProperty.getReference());
-                }
-            } else if (diff.getAction() == ObjectDiff.ACTION_PROPERTYREMOVED) {
-                if (propertyResult != null) {
-                    if (propertyResult.equals(previousProperty)) {
-                        // Delete if it's the same as previous one
-                        removeField(diff.getPropName());
-                        mergeResult.setModified(true);
-                    } else {
-                        // XXX: collision between DB and new: property to remove but not the same as previous
-                        // version
-                        mergeResult.getLog().error("Collision found on class property [{}]",
-                            previousProperty.getReference());
-                    }
-                } else {
-                    // Already removed from DB, lets assume the user is prescient
-                    mergeResult.getLog().warn("Object property [{}] already removed", previousProperty.getReference());
-                }
-            } else if (diff.getAction() == ObjectDiff.ACTION_PROPERTYCHANGED) {
-                if (propertyResult != null) {
-                    if (propertyResult.equals(previousProperty)) {
-                        // Let some automatic migration take care of that modification between DB and new
-                        addField(diff.getPropName(), newClass.getField(diff.getPropName()));
-                        mergeResult.setModified(true);
-                    } else if (!propertyResult.equals(newProperty)) {
-                        propertyResult.merge(previousProperty, newProperty, configuration, context, mergeResult);
-                    }
-                } else {
-                    // XXX: collision between DB and new: property to modify but does not exists in DB
-                    // Lets assume it's a mistake to fix
-                    mergeResult.getLog().warn("Collision found on class property [{}]", newProperty.getReference());
-
-                    addField(diff.getPropName(), newClass.getField(diff.getPropName()));
-                    mergeResult.setModified(true);
-                }
-            }
-        }
+        super.merge(previousElement, newElement, configuration, context, mergeResult);
     }
 
     @Override
@@ -1361,7 +1318,12 @@ public class BaseClass extends BaseCollection<DocumentReference> implements Clas
      */
     public void setOwnerDocument(XWikiDocument ownerDocument)
     {
-        this.ownerDocument = ownerDocument;
+        super.setOwnerDocument(ownerDocument);
+
+        if (this.ownerDocument != null) {
+            setDocumentReference(this.ownerDocument.getDocumentReference());
+        }
+
         if (ownerDocument != null && isDirty) {
             ownerDocument.setContentDirty(true);
         }

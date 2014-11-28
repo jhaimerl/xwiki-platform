@@ -120,7 +120,7 @@
       #end
     #else
       #set ($objects = $doc.getObjects($class.name))
-      #set ($objectCount = $listtool.size($objects))
+      #set ($objectCount = $objects.size())
       <div id="xclass_${escapetool.xml($class.name)}_title" class="xclass-title"><h2>$services.localization.render('core.editors.object.objectsForClass', [${escapetool.xml($class.name)}]) <span id="xclass_${escapetool.xml($class.name)}_xobject_nb" class="xclass_xobject_nb">($objectCount)</span></h2></div>
       <div id="xclass_${escapetool.xml($class.name)}_content" class="xclass-content"><div>
       #foreach ($object in $objects)
@@ -210,11 +210,11 @@
 #if ("$!{request.xaction}" == 'addObject')
   #set ($class = $xwiki.getClass(${request.className}))
   #set ($props = $class.getProperties())
-  #if ($listtool.isEmpty($props))
+  #if ($props.isEmpty())
     $response.setStatus(404)
     #error($services.localization.render('core.editors.object.add.invalidClassName', [$request.className]))
   #else
-    #set ($isNewClass = $listtool.isEmpty($doc.getObjects(${request.className})))
+    #set ($isNewClass = $doc.getObjects(${request.className}).isEmpty())
     #set ($newobj = $doc.newObject(${request.className}))
     #set ($discard = $doc.save())
     #if ("$!{request.xredirect}" != '')
@@ -222,6 +222,10 @@
     #else
       ## Display
       #if ($isNewClass)
+        ## Output the SkinExtension hooks to allow field displayers to pull JavaScript/CSS resources.
+        ## The object editor will move these 'includes' (link/script tags) in the head of the HTML page.
+        ## Note that we need to pull the JavaScript/CSS only once, for the first object of a given type.
+        #skinExtensionHooks
         #displayClass($class)
       #else
         #foreach ($prop in $props)
@@ -247,7 +251,7 @@
   $xwiki.jsfx.use('js/xwiki/editors/dataeditors.js', true)##
   ## Insert JS and CSS needed for the fullscreen edit feature
   $xwiki.jsfx.use('uicomponents/widgets/fullScreen.js', {'forceSkinAction': true, 'language': ${xcontext.language}})##
-  $xwiki.ssfx.use('uicomponents/widgets/fullScreen.css')##
+  $xwiki.ssfx.use('uicomponents/widgets/fullScreen.css', true)##
   ## Some parameters
   #set ($formname = 'update')
   #set ($saveaction = 'save')

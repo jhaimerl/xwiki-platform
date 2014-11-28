@@ -28,13 +28,16 @@ import java.util.Map;
 
 import javax.inject.Inject;
 import javax.inject.Named;
+import javax.inject.Provider;
 import javax.inject.Singleton;
 
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
 import org.xwiki.bridge.DocumentAccessBridge;
 import org.xwiki.bridge.DocumentModelBridge;
 import org.xwiki.component.annotation.Component;
 import org.xwiki.context.Execution;
+import org.xwiki.context.ExecutionContext;
 import org.xwiki.model.EntityType;
 import org.xwiki.model.reference.AttachmentReference;
 import org.xwiki.model.reference.DocumentReference;
@@ -42,6 +45,8 @@ import org.xwiki.model.reference.DocumentReferenceResolver;
 import org.xwiki.model.reference.EntityReferenceSerializer;
 import org.xwiki.model.reference.ObjectPropertyReference;
 import org.xwiki.model.reference.ObjectReference;
+import org.xwiki.security.authorization.ContextualAuthorizationManager;
+import org.xwiki.security.authorization.Right;
 
 import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.XWikiException;
@@ -80,9 +85,25 @@ public class DefaultDocumentAccessBridge implements DocumentAccessBridge
     @Inject
     private EntityReferenceSerializer<String> defaultEntityReferenceSerializer;
 
+    /**
+     * Used to convert a Document Reference to string (compact form without the wiki part if it matches the current
+     * wiki).
+     */
+    @Inject
+    @Named("compactwiki")
+    private EntityReferenceSerializer<String> compactWikiEntityReferenceSerializer;
+
+    @Inject
+    private Provider<ContextualAuthorizationManager> authorizationProvider;
+
+    @Inject
+    private Logger logger;
+
     private XWikiContext getContext()
     {
-        return (XWikiContext) this.execution.getContext().getProperty("xwikicontext");
+        ExecutionContext econtext = this.execution.getContext();
+
+        return econtext != null ? (XWikiContext) econtext.getProperty("xwikicontext") : null;
     }
 
     @Override
@@ -236,9 +257,11 @@ public class DefaultDocumentAccessBridge implements DocumentAccessBridge
     {
         XWikiContext xcontext = getContext();
         XWikiDocument doc = xcontext.getWiki().getDocument(documentReference, xcontext);
-        doc.setParentReference(parentReference);
-        saveDocument(doc, String.format("Changed document parent to [%s].",
-            this.defaultEntityReferenceSerializer.serialize(parentReference)), true);
+        doc.setParent(this.compactWikiEntityReferenceSerializer.serialize(parentReference, doc.getDocumentReference()));
+        saveDocument(
+            doc,
+            String.format("Changed document parent to [%s].",
+                this.defaultEntityReferenceSerializer.serialize(parentReference)), true);
     }
 
     @Override
@@ -267,77 +290,111 @@ public class DefaultDocumentAccessBridge implements DocumentAccessBridge
     @Override
     public Object getProperty(ObjectPropertyReference objectPropertyReference)
     {
-        try {
-            DocumentReference documentReference =
-                (DocumentReference) objectPropertyReference.extractReference(EntityType.DOCUMENT);
-            ObjectReference objectReference =
-                (ObjectReference) objectPropertyReference.extractReference(EntityType.OBJECT);
-            XWikiContext xcontext = getContext();
-            return ((BaseProperty) xcontext.getWiki().getDocument(documentReference, xcontext)
-                .getXObject(objectReference).get(objectPropertyReference.getName())).getValue();
-        } catch (Exception e) {
-            return null;
-        }
+        ObjectReference objectReference = (ObjectReference) objectPropertyReference.extractReference(EntityType.OBJECT);
+
+        return getProperty(objectReference, objectPropertyReference.getName());
     }
 
     @Override
     public Object getProperty(ObjectReference objectReference, String propertyName)
     {
+        Object value = null;
+
         try {
-            DocumentReference documentReference =
-                (DocumentReference) objectReference.extractReference(EntityType.DOCUMENT);
             XWikiContext xcontext = getContext();
-            return ((BaseProperty) xcontext.getWiki().getDocument(documentReference, xcontext)
-                .getXObject(objectReference).get(propertyName)).getValue();
+
+            if (xcontext != null && xcontext.getWiki() != null) {
+                DocumentReference documentReference =
+                    (DocumentReference) objectReference.extractReference(EntityType.DOCUMENT);
+                XWikiDocument doc = xcontext.getWiki().getDocument(documentReference, xcontext);
+                BaseObject object = doc.getXObject(objectReference);
+                if (object != null) {
+                    BaseProperty property = (BaseProperty) object.get(propertyName);
+                    if (property != null) {
+                        value = property.getValue();
+                    }
+                }
+            }
         } catch (Exception e) {
-            return null;
+            this.logger.error("Failed to get property", e);
         }
+
+        return value;
     }
 
     @Override
     public Object getProperty(String documentReference, String className, int objectNumber, String propertyName)
     {
+        Object value = null;
+
         try {
             XWikiContext xcontext = getContext();
-            return ((BaseProperty) xcontext.getWiki().getDocument(documentReference, xcontext)
-                .getObject(className, objectNumber).get(propertyName)).getValue();
-        } catch (Exception ex) {
-            return null;
+
+            if (xcontext != null && xcontext.getWiki() != null) {
+                XWikiDocument doc = xcontext.getWiki().getDocument(documentReference, xcontext);
+                BaseObject object = doc.getObject(className, objectNumber);
+                if (object != null) {
+                    BaseProperty property = (BaseProperty) object.get(propertyName);
+                    if (property != null) {
+                        value = property.getValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            this.logger.error("Failed to get property", e);
         }
+
+        return value;
     }
 
     @Override
     @Deprecated
     public Object getProperty(String documentReference, String className, String propertyName)
     {
-        Object value;
+        Object value = null;
 
         try {
             XWikiContext xcontext = getContext();
-            XWikiDocument doc = xcontext.getWiki().getDocument(documentReference, xcontext);
-            BaseObject object = doc.getObject(className);
-            BaseProperty property = (BaseProperty) object.get(propertyName);
-            value = property.getValue();
-        } catch (Exception ex) {
-            value = null;
+
+            if (xcontext != null && xcontext.getWiki() != null) {
+                XWikiDocument doc = xcontext.getWiki().getDocument(documentReference, xcontext);
+                BaseObject object = doc.getObject(className);
+                if (object != null) {
+                    BaseProperty property = (BaseProperty) object.get(propertyName);
+                    if (property != null) {
+                        value = property.getValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            this.logger.error("Failed to get property", e);
         }
+
         return value;
     }
 
     @Override
     public Object getProperty(DocumentReference documentReference, DocumentReference classReference, String propertyName)
     {
-        Object value;
+        Object value = null;
 
         try {
             XWikiContext xcontext = getContext();
-            XWikiDocument doc = xcontext.getWiki().getDocument(documentReference, xcontext);
-            BaseObject object = doc.getXObject(classReference);
-            BaseProperty property = (BaseProperty) object.get(propertyName);
-            value = property.getValue();
-        } catch (Exception ex) {
-            value = null;
+
+            if (xcontext != null && xcontext.getWiki() != null) {
+                XWikiDocument doc = xcontext.getWiki().getDocument(documentReference, xcontext);
+                BaseObject object = doc.getXObject(classReference);
+                if (object != null) {
+                    BaseProperty property = (BaseProperty) object.get(propertyName);
+                    if (property != null) {
+                        value = property.getValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            this.logger.error("Failed to get property", e);
         }
+
         return value;
     }
 
@@ -345,30 +402,51 @@ public class DefaultDocumentAccessBridge implements DocumentAccessBridge
     public Object getProperty(DocumentReference documentReference, DocumentReference classReference, int objectNumber,
         String propertyName)
     {
-        Object value;
+        Object value = null;
 
         try {
             XWikiContext xcontext = getContext();
-            XWikiDocument doc = xcontext.getWiki().getDocument(documentReference, xcontext);
-            BaseObject object = doc.getXObject(classReference, objectNumber);
-            BaseProperty property = (BaseProperty) object.get(propertyName);
-            value = property.getValue();
-        } catch (Exception ex) {
-            value = null;
+
+            if (xcontext != null && xcontext.getWiki() != null) {
+                XWikiDocument doc = xcontext.getWiki().getDocument(documentReference, xcontext);
+                BaseObject object = doc.getXObject(classReference, objectNumber);
+                if (object != null) {
+                    BaseProperty property = (BaseProperty) object.get(propertyName);
+                    if (property != null) {
+                        value = property.getValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            this.logger.error("Failed to get property", e);
         }
+
         return value;
     }
 
     @Override
     public Object getProperty(String documentReference, String propertyName)
     {
+        Object value = null;
+
         try {
             XWikiContext xcontext = getContext();
-            return ((BaseProperty) xcontext.getWiki().getDocument(documentReference, xcontext)
-                .getFirstObject(propertyName, xcontext).get(propertyName)).getValue();
-        } catch (Exception ex) {
-            return null;
+
+            if (xcontext != null && xcontext.getWiki() != null) {
+                XWikiDocument doc = xcontext.getWiki().getDocument(documentReference, xcontext);
+                BaseObject object = doc.getFirstObject(propertyName, xcontext);
+                if (object != null) {
+                    BaseProperty property = (BaseProperty) object.get(propertyName);
+                    if (property != null) {
+                        value = property.getValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            this.logger.error("Failed to get property", e);
         }
+
+        return value;
     }
 
     @Override
@@ -377,8 +455,9 @@ public class DefaultDocumentAccessBridge implements DocumentAccessBridge
         List<Object> result;
         try {
             XWikiContext xcontext = getContext();
-            result = new ArrayList<Object>(xcontext.getWiki().getDocument(documentReference, xcontext)
-                .getObject(className).getFieldList());
+            result =
+                new ArrayList<Object>(xcontext.getWiki().getDocument(documentReference, xcontext).getObject(className)
+                    .getFieldList());
         } catch (Exception ex) {
             result = Collections.emptyList();
         }
@@ -408,12 +487,6 @@ public class DefaultDocumentAccessBridge implements DocumentAccessBridge
         return lst != null && lst.contains(property);
     }
 
-    /**
-     * {@inheritDoc}
-     * 
-     * @see org.xwiki.bridge.DocumentAccessBridge#setProperty(java.lang.String, java.lang.String, java.lang.String,
-     *      java.lang.Object)
-     */
     @Override
     @Deprecated
     public void setProperty(String documentReference, String className, String propertyName, Object propertyValue)
@@ -608,11 +681,12 @@ public class DefaultDocumentAccessBridge implements DocumentAccessBridge
         if (isFullURL) {
             XWikiContext xcontext = getContext();
             url =
-                xcontext.getURLFactory().getURL(
-                    xcontext.getURLFactory().createAttachmentURL(attachmentReference.getName(),
+                xcontext
+                    .getURLFactory()
+                    .createAttachmentURL(attachmentReference.getName(),
                         attachmentReference.getDocumentReference().getLastSpaceReference().getName(),
                         attachmentReference.getDocumentReference().getName(), "download", queryString,
-                        attachmentReference.getDocumentReference().getWikiReference().getName(), xcontext), xcontext);
+                        attachmentReference.getDocumentReference().getWikiReference().getName(), xcontext).toString();
         } else {
             XWikiContext xcontext = getContext();
             String documentReference =
@@ -672,9 +746,7 @@ public class DefaultDocumentAccessBridge implements DocumentAccessBridge
     @Override
     public boolean hasProgrammingRights()
     {
-        XWikiContext xcontext = getContext();
-
-        return xcontext.getWiki().getRightService().hasProgrammingRights(xcontext);
+        return this.authorizationProvider.get().hasAccess(Right.PROGRAM);
     }
 
     @Override
@@ -694,7 +766,8 @@ public class DefaultDocumentAccessBridge implements DocumentAccessBridge
     @Override
     public DocumentReference getCurrentUserReference()
     {
-        return getContext().getUserReference();
+        XWikiContext xcontext = getContext();
+        return xcontext != null ? xcontext.getUserReference() : null;
     }
 
     @Override
@@ -751,7 +824,7 @@ public class DefaultDocumentAccessBridge implements DocumentAccessBridge
     public String getCurrentWiki()
     {
         XWikiContext xcontext = getContext();
-        return xcontext.getDatabase();
+        return xcontext.getWikiId();
     }
 
     /**
@@ -778,8 +851,9 @@ public class DefaultDocumentAccessBridge implements DocumentAccessBridge
         boolean hasRight = false;
         XWikiContext xcontext = getContext();
         try {
-            hasRight = xcontext.getWiki().getRightService()
-                .hasAccessLevel(right, xcontext.getUser(), documentReference, xcontext);
+            hasRight =
+                xcontext.getWiki().getRightService()
+                    .hasAccessLevel(right, xcontext.getUser(), documentReference, xcontext);
         } catch (XWikiException e) {
             // Do nothing
         }

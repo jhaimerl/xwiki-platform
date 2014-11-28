@@ -106,6 +106,9 @@ public class ApplicationHomeEditPage extends InlinePage
     public void clickSaveAndContinue()
     {
         saveAndContinueButton.click();
+
+        // Wait until the page is really saved.
+        waitForNotificationSuccessMessage("Saved");
     }
 
     @SuppressWarnings("unchecked")
@@ -182,7 +185,7 @@ public class ApplicationHomeEditPage extends InlinePage
     public void moveLiveTableColumnBefore(String columnToMove, String beforeColumn)
     {
         new Actions(getDriver()).clickAndHold(getLiveTableColumn(columnToMove))
-            .moveToElement(getLiveTableColumn(beforeColumn), -3, 0).release().perform();
+            .moveToElement(getLiveTableColumn(beforeColumn), 0, 0).release().perform();
     }
 
     /**

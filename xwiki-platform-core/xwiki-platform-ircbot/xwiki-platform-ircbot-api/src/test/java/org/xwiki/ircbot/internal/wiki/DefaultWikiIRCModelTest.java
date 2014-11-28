@@ -19,24 +19,28 @@
  */
 package org.xwiki.ircbot.internal.wiki;
 
-import java.util.Arrays;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import java.util.Collections;
 import java.util.List;
 
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.xwiki.context.Execution;
 import org.xwiki.context.ExecutionContext;
+import org.xwiki.ircbot.IRCBot;
 import org.xwiki.ircbot.IRCBotException;
 import org.xwiki.ircbot.internal.BotData;
 import org.xwiki.ircbot.internal.BotListenerData;
 import org.xwiki.ircbot.wiki.WikiIRCBotConstants;
 import org.xwiki.model.reference.DocumentReference;
-import org.xwiki.model.reference.EntityReferenceSerializer;
-import org.xwiki.model.reference.EntityReferenceValueProvider;
 import org.xwiki.query.Query;
 import org.xwiki.query.QueryManager;
+import org.xwiki.test.annotation.AfterComponent;
 import org.xwiki.test.annotation.AllComponents;
 import org.xwiki.test.mockito.MockitoComponentMockingRule;
 
@@ -45,12 +49,6 @@ import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.doc.XWikiDocument;
 import com.xpn.xwiki.objects.BaseObject;
 import com.xpn.xwiki.web.Utils;
-
-import org.junit.Assert;
-
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link DefaultWikiIRCModel}.
@@ -63,8 +61,7 @@ public class DefaultWikiIRCModelTest implements WikiIRCBotConstants
 {
     @Rule
     public MockitoComponentMockingRule<DefaultWikiIRCModel> componentManager =
-        new MockitoComponentMockingRule<DefaultWikiIRCModel>(DefaultWikiIRCModel.class,
-                Arrays.asList(EntityReferenceSerializer.class, EntityReferenceValueProvider.class));
+        new MockitoComponentMockingRule<DefaultWikiIRCModel>(DefaultWikiIRCModel.class);
 
     private XWiki xwiki;
 
@@ -72,38 +69,55 @@ public class DefaultWikiIRCModelTest implements WikiIRCBotConstants
 
     private XWikiDocument configDoc;
 
+    private Execution mockExecution;
+    
+    private IRCBot mockBot;
+    
+    private QueryManager mockQueryManager;
+
     @Before
     public void setUp() throws Exception
     {
         Utils.setComponentManager(this.componentManager);
 
-        Execution execution = this.componentManager.getInstance(Execution.class);
         ExecutionContext context = new ExecutionContext();
 
         this.xwiki = mock(XWiki.class);
 
         this.xwikiContext = new XWikiContext();
-        this.xwikiContext.setDatabase("somewiki");
         this.xwikiContext.setWiki(this.xwiki);
 
         context.setProperty("xwikicontext", this.xwikiContext);
 
-        final DocumentReference configDocReference = new DocumentReference("somewiki", "IRC", "IRCConfiguration");
+        DocumentReference configDocReference = new DocumentReference("botwiki", "IRC", "IRCConfiguration");
         this.configDoc = mock(XWikiDocument.class);
 
-        when(execution.getContext()).thenReturn(context);
+        when(this.mockExecution.getContext()).thenReturn(context);
         when(xwiki.getDocument(configDocReference, xwikiContext)).thenReturn(configDoc);
         when(configDoc.getDocumentReference()).thenReturn(configDocReference);
+    }
+
+    @AfterComponent
+    public void afterComponent() throws Exception
+    {
+        // We use @AllComponents that inject all components but we still want some of them to be mocks
+
+        this.mockExecution = this.componentManager.registerMockComponent(Execution.class);
+        this.mockBot = this.componentManager.registerMockComponent(IRCBot.class);
+        this.mockQueryManager = this.componentManager.registerMockComponent(QueryManager.class);
     }
 
     @Test
     public void loadBotDataWhenNoConfigDataInConfigDocument() throws Exception
     {
+        // Simulate the the IRC Bot is started in the "botwiki" wiki.
+        when(mockBot.getWikiId()).thenReturn("botwiki");
+
         try {
             this.componentManager.getComponentUnderTest().loadBotData();
             Assert.fail("Should have thrown an exception");
         } catch (IRCBotException expected) {
-            Assert.assertEquals("Cannot find the IRC Configuration object in the [somewiki:IRC.IRCConfiguration] "
+            Assert.assertEquals("Cannot find the IRC Configuration object in the [botwiki:IRC.IRCConfiguration] "
                 + "document", expected.getMessage());
         }
     }
@@ -111,6 +125,9 @@ public class DefaultWikiIRCModelTest implements WikiIRCBotConstants
     @Test
     public void loadBotData() throws Exception
     {
+        // Simulate the the IRC Bot is started in the "botwiki" wiki.
+        when(this.mockBot.getWikiId()).thenReturn("botwiki");
+
         BaseObject botDataObject = mock(BaseObject.class);
 
         when(configDoc.getXObject(WIKI_BOT_CONFIGURATION_CLASS)).thenReturn(botDataObject);
@@ -131,13 +148,12 @@ public class DefaultWikiIRCModelTest implements WikiIRCBotConstants
     @Test
     public void getWikiBotListenerData() throws Exception
     {
-        QueryManager queryManager = this.componentManager.getInstance(QueryManager.class);
         Query query = mock(Query.class);
 
         List results = Collections.singletonList(new Object[]{
             "space", "name", "listenername", "listenerdescription" });
 
-        when(queryManager.createQuery(anyString(), anyString())).thenReturn(query);
+        when(this.mockQueryManager.createQuery(anyString(), anyString())).thenReturn(query);
         when(query.execute()).thenReturn(results);
 
         List<BotListenerData> data = this.componentManager.getComponentUnderTest().getWikiBotListenerData();
@@ -148,15 +164,21 @@ public class DefaultWikiIRCModelTest implements WikiIRCBotConstants
     }
 
     /**
-     * Verify that if there's no configuration document in the current wiki then we'll look into the main wiki.
+     * Verify that if there's no configuration document in the Bot wiki then we'll look into the main wiki.
      */
     @Test
     public void getConfigurationDocumentWhenLocatedInMainWiki() throws Exception
     {
+        // Simulate the the IRC Bot is started in the "botwiki" wiki.
+        when(this.mockBot.getWikiId()).thenReturn("botwiki");
+
+        // No config in the "botwiki" wiki
         when(this.configDoc.isNew()).thenReturn(true);
+
+        // Config in main wiki
+        DocumentReference mainConfigDocReference = new DocumentReference("xwiki", "IRC", "IRCConfiguration");
         XWikiDocument mainConfigDoc = mock(XWikiDocument.class);
-        when(xwiki.getDocument(new DocumentReference("xwiki", "IRC", "IRCConfiguration"), this.xwikiContext))
-            .thenReturn(mainConfigDoc);
+        when(this.xwiki.getDocument(mainConfigDocReference, this.xwikiContext)).thenReturn(mainConfigDoc);
 
         Assert.assertSame(mainConfigDoc, this.componentManager.getComponentUnderTest().getConfigurationDocument());
     }

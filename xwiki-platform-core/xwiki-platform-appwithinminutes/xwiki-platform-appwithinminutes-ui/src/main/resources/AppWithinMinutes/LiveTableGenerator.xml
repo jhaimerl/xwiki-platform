@@ -1,5 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+<!--
+ * See the NOTICE file distributed with this work for additional
+ * information regarding copyright ownership.
+ *
+ * This is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as
+ * published by the Free Software Foundation; either version 2.1 of
+ * the License, or (at your option) any later version.
+ *
+ * This software is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this software; if not, write to the Free
+ * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+ * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+-->
+
 <xwikidoc>
   <web>AppWithinMinutes</web>
   <name>LiveTableGenerator</name>
@@ -24,39 +44,57 @@
   <syntaxId>xwiki/2.0</syntaxId>
   <hidden>true</hidden>
   <content>{{velocity output="false" filter="none"}}
+#macro(escapeSingleQuotes $string)
+$string.replace("'", "''")##
+#end
+
 #macro(prepareColumnProperties)
   #set ($columnProperties = {})
   #set ($genericColumns = ['doc.title', 'doc.name', 'doc.space', 'doc.fullName', 'doc.author', 'doc.date', 'doc.creator', 'doc.creationDate'])
   #set ($specialColumns = ['_avatar', '_images', '_attachments', '_actions'])
+  ## Field types that aren't sortable nor filterable.
+  #set ($unsortableFieldTypes = ['TextArea', 'ComputedField'])
+  ## Field types that have HTML display.
+  #set ($htmlFieldTypes = ['TextArea', 'Users', 'Groups'])
   #foreach ($column in $columns)
     #set ($field = $xclass.get($column))
     #if ($field.getProperty('customDisplay').value == '{{include reference="AppWithinMinutes.Title"/}}')
       ## This field is a place-holder for the document title.
+      #set ($titleDisplayNamePlaceHolder = $field.translatedPrettyName)
       #set ($field = $NULL)
       #set ($column = 'doc.title')
       #set ($discard = $columns.set($mathtool.sub($velocityCount, 1), $column))
     #end
     #if ($field)
+      ## Column type.
       #set ($properties = {'type': 'text'})
       #if ($field.classType.endsWith('List'))
         #set ($discard = $properties.put('type', 'list'))
       #elseif ($field.classType == 'Number')
         #set ($discard = $properties.put('type', 'number'))
       #end
-      #if ($field.classType == 'TextArea' || $field.classType == 'ComputedField')
+      ## Sortable/Filterable columns.
+      #if ($unsortableFieldTypes.contains($field.classType))
         #set ($discard = $properties.put('filterable', false))
         #set ($discard = $properties.put('sortable', false))
       #else
         ## The size of the filter input.
         #set ($discard = $properties.put('size', 10))
       #end
-      #if ($field.classType == 'TextArea' || $field.getProperty('customDisplay').value != '')
+      ## Columns with HTML display.
+      ## Note that the check for custom display is too generic because you can have a custom displayer that generates
+      ## HTML in edit mode and plain text in view mode.
+      #if ($htmlFieldTypes.contains($field.classType) || $field.getProperty('customDisplay').value != '')
         #set ($discard = $properties.put('html', true))
       #end
     #elseif ($genericColumns.contains($column))
       #set ($properties = {'type': 'text', 'size': 10})
       #if ($column == 'doc.title')
         #set ($discard = $properties.put('size', 20))
+        #if ("$!titleDisplayNamePlaceHolder" != '')
+          #set ($discard = $properties.put('displayName', $titleDisplayNamePlaceHolder))
+          #set ($titleDisplayNamePlaceHolder = $NULL)
+        #end
       #end
       #if ($column == 'doc.creator' || $column == 'doc.author')
         #set ($discard = $properties.put('link', 'author'))
@@ -77,7 +115,7 @@
 #set ($discard = "#prepareColumnProperties()")
 ${escapetool.h}set (${escapetool.d}columnsProperties = {
 #foreach($entry in $columnProperties.entrySet())
-  '$entry.key': $jsontool.serialize($entry.value)#if ($foreach.hasNext),#end
+  '#escapeSingleQuotes($entry.key)': $jsontool.serialize($entry.value)#if ($foreach.hasNext),#end
 
 #end
 })
@@ -94,28 +132,40 @@ ${escapetool.h}set (${escapetool.d}columnsProperties = {
 #end
 #end
 
+#macro(generateColumnExtraSSX)
+#set($userPicker = false)
+#foreach($column in $columns)
+#set($field = $xclass.get($column))
+#if($field &amp;&amp; ($field.classType == 'Users' || $field.classType == 'Groups') &amp;&amp; !$userPicker)
+#set($userPicker = true)
+${escapetool.h}set (${escapetool.d}discard = ${escapetool.d}xwiki.ssfx.use('uicomponents/widgets/userpicker/userPicker.css'))
+#end
+#end
+#end
+
 #macro(generateLiveTable)
 {{{##
 {{velocity}}
 #set($className = $liveTableObj.getProperty('class').value)
 #set($translationBundleId = "$stringtool.removeEnd($className, 'Class')Translations")
-${escapetool.h}set (${escapetool.d}discard = ${escapetool.d}services.localization.use('document', '$translationBundleId'))
+${escapetool.h}set (${escapetool.d}discard = ${escapetool.d}services.localization.use('document', '#escapeSingleQuotes($translationBundleId)'))
 #set($classDoc = $xwiki.getDocument($className))
 #set($xclass = $classDoc.getxWikiClass())
 #set($shortName = $classDoc.name.replaceAll("Class", "").toLowerCase())
+#generateColumnExtraSSX()
 #generateColumnProperties()
 ${escapetool.h}set (${escapetool.d}options = {
-  'className': '$className',
-  'resultPage': '$stringtool.removeEnd($className, 'Class')LiveTableResults',
-  'translationPrefix': '${shortName}.livetable.',
+  'className': '#escapeSingleQuotes($className)',
+  'resultPage': '#escapeSingleQuotes($stringtool.removeEnd($className, 'Class'))LiveTableResults',
+  'translationPrefix': '#escapeSingleQuotes($shortName).livetable.',
   'tagCloud': true,
   'rowCount': 15,
   'maxPages': 10,
-  'selectedColumn': '$columns.get(0)',
+  'selectedColumn': '#escapeSingleQuotes($columns.get(0))',
   'defaultOrder': 'asc'
 })
-${escapetool.h}set (${escapetool.d}columns = [#foreach($column in $columns)#if($velocityCount &gt; 1), #end'$column'#end])
-${escapetool.h}livetable('$shortName' ${escapetool.d}columns ${escapetool.d}columnsProperties ${escapetool.d}options)
+${escapetool.h}set (${escapetool.d}columns = [#foreach($column in $columns)#if($velocityCount &gt; 1), #end'#escapeSingleQuotes($column)'#end])
+${escapetool.h}livetable('#escapeSingleQuotes($shortName)' ${escapetool.d}columns ${escapetool.d}columnsProperties ${escapetool.d}options)
 {{/velocity}}##
 }}}
 #end
@@ -140,7 +190,7 @@ ${escapetool.h}livetable('$shortName' ${escapetool.d}columns ${escapetool.d}colu
 #set ($isLiveTableResultsRequest = $xcontext.action == 'get' &amp;&amp; "$!{request.outputSyntax}" == 'plain')
 ## We do the include separately because the wiki syntax is evaluated after the Velocity code.
 #if ($isLiveTableResultsRequest)
-  {{include document="XWiki.LiveTableResultsMacros" /}}
+  {{include reference="XWiki.LiveTableResultsMacros" /}}
 #end
 {{/velocity}}{{velocity wiki="false"}}
 ## Old applications need custom live table results just because they don't have a document translation bundle generated.

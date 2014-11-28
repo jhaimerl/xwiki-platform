@@ -19,6 +19,9 @@
  */
 package org.xwiki.model.internal.reference;
 
+import javax.inject.Named;
+import javax.inject.Singleton;
+
 import org.xwiki.component.annotation.Component;
 import org.xwiki.model.EntityType;
 import org.xwiki.model.reference.EntityReference;
@@ -31,10 +34,10 @@ import org.xwiki.model.reference.EntityReference;
  * 
  * @version $Id$
  * @since 2.2M1
- * @deprecated {@link DefaultStringEntityReferenceSerializer} should be used instead
  */
-@Deprecated
-@Component("local")
+@Component
+@Named("local")
+@Singleton
 public class LocalStringEntityReferenceSerializer extends DefaultStringEntityReferenceSerializer
 {
     @Override

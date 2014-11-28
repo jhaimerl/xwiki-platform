@@ -19,6 +19,8 @@
  */
 package org.xwiki.wysiwyg.test.ui;
 
+import java.net.URLDecoder;
+
 import org.junit.Assert;
 import org.junit.Test;
 import org.openqa.selenium.Keys;
@@ -50,13 +52,18 @@ public class EditWYSIWYGTest extends AbstractWYSIWYGEditorTest
     @IgnoreBrowser(value = "internet.*", version = "8\\.*", reason="See http://jira.xwiki.org/browse/XE-1146"),
     @IgnoreBrowser(value = "internet.*", version = "9\\.*", reason="See http://jira.xwiki.org/browse/XE-1177")
     })
-    public void testUploadImageAfterPreview()
+    public void testUploadImageAfterPreview() throws Exception
     {
         this.editPage.clickPreview().clickBackToEdit();
         // Recreate the page object because the page has been reloaded.
         this.editPage = new WYSIWYGEditPage().waitUntilPageIsLoaded();
         UploadImagePane uploadImagePane = this.editPage.insertAttachedImage().selectFromCurrentPage().uploadImage();
-        uploadImagePane.setImageToUpload(this.getClass().getResource("/image.png").getPath());
+        // URL#getPath() returns the path URL-encoded and the file upload input doesn't expect this. Normally we
+        // shouldn't have special characters in the path but some CI jobs have spaces in their names
+        // (e.g. "xwiki-platform Quality Checks") which are encoded as %20. The file upload hangs if we pass the path
+        // with encoded spaces.
+        String path = URLDecoder.decode(this.getClass().getResource("/image.png").getPath(), "UTF-8");
+        uploadImagePane.setImageToUpload(path);
         // Fails if the image configuration step doesn't load in a decent amount of time.
         uploadImagePane.configureImage();
     }
@@ -260,5 +267,32 @@ public class EditWYSIWYGTest extends AbstractWYSIWYGEditorTest
         textArea.sendKeys(Keys.ARROW_RIGHT, Keys.ARROW_RIGHT, Keys.ARROW_RIGHT, ".");
 
         Assert.assertEquals("foo.\nbar", textArea.getText());
+    }
+
+    /**
+     * @see "XWIKI-3039: Changes are lost if an exception is thrown during saving"
+     * @see "XWIKI-9750: User Input in WYSIWYG Editor is lost after conversion error"
+     */
+    @Test
+    public void testRecoverAfterConversionException()
+    {
+        EditorElement editor = this.editPage.getContentEditor();
+
+        // We removed the startwikilink comment to force a parsing failure.
+        String html = "<span class=\"wikiexternallink\"><a href=\"mailto:x@y.z\">xyz</a></span><!--stopwikilink-->";
+        editor.getRichTextArea().setContent(html);
+
+        // Test to see if the HTML was accepted by the rich text area.
+        Assert.assertEquals("xyz", editor.getRichTextArea().getText());
+
+        // Save & Continue should notify us about the conversion error.
+        this.editPage.clickSaveAndContinue(false);
+        this.editPage.waitForNotificationErrorMessage("Failed to save the document. "
+            + "Reason: content: Exception while parsing HTML");
+
+        // Save & View should redirect us back to the edit mode, but the unsaved changes shouldn't be lost.
+        this.editPage.clickSaveAndView();
+        this.editPage = new WYSIWYGEditPage().waitUntilPageIsLoaded();
+        Assert.assertEquals("xyz", this.editPage.getContentEditor().getRichTextArea().getText());
     }
 }

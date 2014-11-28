@@ -22,6 +22,8 @@ package org.xwiki.container.servlet;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.xwiki.component.embed.EmbeddableComponentManager;
 import org.xwiki.component.internal.StackingComponentEventManager;
 import org.xwiki.component.manager.ComponentLookupException;
@@ -40,6 +42,11 @@ import org.xwiki.observation.event.ApplicationStoppedEvent;
  */
 public class XWikiServletContextListener implements ServletContextListener
 {
+    /**
+     * Logger to use to log shutdown information (opposite of initialization).
+     */
+    private static final Logger SHUTDOWN_LOGGER = LoggerFactory.getLogger("org.xwiki.shutdown");
+
     /** The component manager used to lookup other components. */
     private EmbeddableComponentManager componentManager;
 
@@ -48,6 +55,9 @@ public class XWikiServletContextListener implements ServletContextListener
     {
         // Initializes the Embeddable Component Manager
         EmbeddableComponentManager ecm = new EmbeddableComponentManager();
+
+        // Initialize all the components. Note that this can fail with a Runtime Exception. This is done voluntarily so
+        // that the XWiki webaopp will not be available if one component fails to load. It's better to fail-fast.
         ecm.initialize(this.getClass().getClassLoader());
         this.componentManager = ecm;
 
@@ -71,8 +81,7 @@ public class XWikiServletContextListener implements ServletContextListener
 
         // Initialize the Environment
         try {
-            ServletEnvironment servletEnvironment =
-                (ServletEnvironment) this.componentManager.getInstance(Environment.class);
+            ServletEnvironment servletEnvironment = this.componentManager.getInstance(Environment.class);
             servletEnvironment.setServletContext(servletContextEvent.getServletContext());
         } catch (ComponentLookupException e) {
             throw new RuntimeException("Failed to initialize the Servlet Environment", e);
@@ -112,31 +121,38 @@ public class XWikiServletContextListener implements ServletContextListener
     @Override
     public void contextDestroyed(ServletContextEvent sce)
     {
-        // Send an Observation event to signal the XWiki application is stopped. This allows components who need to do
-        // something on stop to do it.
-        try {
-            ObservationManager observationManager = this.componentManager.getInstance(ObservationManager.class);
-            observationManager.notify(new ApplicationStoppedEvent(), this);
-        } catch (ComponentLookupException e) {
-            // Nothing to do here.
-            // TODO: Log a warning
-        }
+        SHUTDOWN_LOGGER.debug("Stopping XWiki...");
 
-        // Even though the notion of ApplicationContext has been deprecated in favor of the notion of Environment we
-        // still keep this destruction for backward-compatibility.
-        // TODO: Add an Observation Even that we send when the Environment is destroyed so that we can move the code
-        // below in an Event Listener and move it to the legacy module.
-        try {
-            ApplicationContextListenerManager applicationContextListenerManager =
-                this.componentManager.getInstance(ApplicationContextListenerManager.class);
-            Container container = this.componentManager.getInstance(Container.class);
-            applicationContextListenerManager.destroyApplicationContext(container.getApplicationContext());
-        } catch (ComponentLookupException ex) {
-            // Nothing to do here.
-            // TODO: Log a warning
-        }
+        // It's possible that the Component Manager failed to initialize some of the required components.
+        if (this.componentManager != null) {
+            // Send an Observation event to signal the XWiki application is stopped. This allows components who need
+            // to do something on stop to do it.
+            try {
+                ObservationManager observationManager = this.componentManager.getInstance(ObservationManager.class);
+                observationManager.notify(new ApplicationStoppedEvent(), this);
+            } catch (ComponentLookupException e) {
+                // Nothing to do here.
+                // TODO: Log a warning
+            }
 
-        // Make sure to dispose all components before leaving
-        this.componentManager.dispose();
+            // Even though the notion of ApplicationContext has been deprecated in favor of the notion of Environment we
+            // still keep this destruction for backward-compatibility.
+            // TODO: Add an Observation Even that we send when the Environment is destroyed so that we can move the code
+            // below in an Event Listener and move it to the legacy module.
+            try {
+                ApplicationContextListenerManager applicationContextListenerManager =
+                    this.componentManager.getInstance(ApplicationContextListenerManager.class);
+                Container container = this.componentManager.getInstance(Container.class);
+                applicationContextListenerManager.destroyApplicationContext(container.getApplicationContext());
+            } catch (ComponentLookupException ex) {
+                // Nothing to do here.
+                // TODO: Log a warning
+            }
+
+            // Make sure to dispose all components before leaving
+            this.componentManager.dispose();
+
+            SHUTDOWN_LOGGER.debug("XWiki has been stopped!");
+        }
     }
 }

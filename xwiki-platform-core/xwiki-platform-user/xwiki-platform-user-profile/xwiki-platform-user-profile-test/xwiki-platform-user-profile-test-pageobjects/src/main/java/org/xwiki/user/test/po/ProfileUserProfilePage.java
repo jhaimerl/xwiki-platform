@@ -55,10 +55,10 @@ public class ProfileUserProfilePage extends AbstractUserProfilePage
     @FindBy(className = "adr")
     private WebElement userAddress;
 
-    @FindBy(xpath = "//dd[1]/span[@class='wikiexternallink']")
+    @FindBy(xpath = "//dd[preceding-sibling::dt[1]/label[. = 'Blog']]//a")
     private WebElement userBlog;
 
-    @FindBy(xpath = "//dd[2]/span[@class='wikiexternallink']")
+    @FindBy(xpath = "//dd[preceding-sibling::dt[1]/label[. = 'Blog Feed']]//a")
     private WebElement userBlogFeed;
 
     @FindBy(xpath = "//div[@id='avatar']//a")
@@ -69,8 +69,8 @@ public class ProfileUserProfilePage extends AbstractUserProfilePage
 
     public static ProfileUserProfilePage gotoPage(String username)
     {
+        getUtil().gotoPage("XWiki", username);
         ProfileUserProfilePage page = new ProfileUserProfilePage(username);
-        getUtil().gotoPage("XWiki", page.getUsername());
         return page;
     }
 

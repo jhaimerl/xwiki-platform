@@ -40,7 +40,7 @@ import com.xpn.xwiki.store.XWikiStoreInterface;
 
 /**
  * Import a set of XWiki documents into an existing database.
- * 
+ *
  * @version $Id$
  */
 public class Importer extends AbstractPackager
@@ -52,7 +52,7 @@ public class Importer extends AbstractPackager
      * Note: I would have liked to call this method "import" but it's a reserved keyword... Strange that it's not
      * allowed for method names though.
      * </p>
-     * 
+     *
      * @param sourceDirectory the directory where the package.xml file is located and where the documents to import are
      *            located
      * @param databaseName some database name (TODO: find out what this name is really)
@@ -73,7 +73,7 @@ public class Importer extends AbstractPackager
      * Note: I would have liked to call this method "import" but it's a reserved keyword... Strange that it's not
      * allowed for method names though.
      * </p>
-     * 
+     *
      * @param sourceDirectory the directory where the package.xml file is located and where the documents to import are
      *            located
      * @param databaseName some database name (TODO: find out what this name is really)
@@ -87,7 +87,7 @@ public class Importer extends AbstractPackager
     public void importDocuments(File sourceDirectory, String databaseName, File hibernateConfig, String importUser)
         throws Exception
     {
-        XWikiContext context = createXWikiContext(databaseName, hibernateConfig);
+        XWikiContext xcontext = createXWikiContext(databaseName, hibernateConfig);
 
         Package pack = new Package();
         pack.setWithVersions(false);
@@ -95,19 +95,21 @@ public class Importer extends AbstractPackager
         // TODO: The readFromDir method should not throw IOExceptions, only PackageException.
         // See http://jira.xwiki.org/jira/browse/XWIKI-458
         try {
-            pack.readFromDir(sourceDirectory, context);
+            pack.readFromDir(sourceDirectory, xcontext);
         } catch (IOException e) {
             throw new PackageException(PackageException.ERROR_PACKAGE_UNKNOWN, "Failed to import documents from ["
                 + sourceDirectory + "]", e);
         }
-        installWithUser(importUser, pack, context);
+        installWithUser(importUser, pack, xcontext);
 
         // We MUST shutdown HSQLDB because otherwise the last transactions will not be flushed
         // to disk and will be lost. In practice this means the last Document imported has a
         // very high chance of not making it...
         // TODO: Find a way to implement this generically for all databases and inside
         // XWikiHibernateStore (cf http://jira.xwiki.org/jira/browse/XWIKI-471).
-        shutdownHSQLDB(context);
+        shutdownHSQLDB(xcontext);
+
+        disposeXWikiContext(xcontext);
     }
 
     /**
@@ -115,10 +117,11 @@ public class Importer extends AbstractPackager
      * @param importUser optionally the user under which to perform the import (useful for example when importing pages
      *            that need to have Programming Rights and the page author is not the same as the importing user)
      * @param context the XWiki context
+     * @return the number of imported documents
      * @throws XWikiException failed to import the XAR file
      * @throws IOException failed to parse the XAR file
      */
-    public void importXAR(File file, String importUser, XWikiContext context) throws XWikiException, IOException
+    public int importXAR(File file, String importUser, XWikiContext context) throws XWikiException, IOException
     {
         Package pack = new Package();
         pack.setWithVersions(false);
@@ -132,12 +135,16 @@ public class Importer extends AbstractPackager
         }
 
         // Import into the database
-        installWithUser(importUser, pack, context);
+        if (!pack.getFiles().isEmpty()) {
+            installWithUser(importUser, pack, context);
+        }
+
+        return pack.getFiles().size();
     }
 
     /**
      * Install a Package as a backup pack or with the passed user (if any).
-     * 
+     *
      * @param importUser the user to import with or null if it should be imported as a backup pack
      * @param pack the Package instance performing the import
      * @param context the XWiki Context
@@ -167,7 +174,7 @@ public class Importer extends AbstractPackager
 
     /**
      * Shutdowns HSQLDB.
-     * 
+     *
      * @param context the XWiki Context object from which we can retrieve the Store implementation
      * @throws XWikiException in case of shutdown error
      */

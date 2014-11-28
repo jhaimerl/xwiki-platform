@@ -1,5 +1,4 @@
 .xRichTextEditorTabPanel {
-  background-color: #F0F0EE;
   font-style: normal;
   width: 100%;
   padding: 0;
@@ -39,7 +38,9 @@
 .xRichTextEditor {
   border: 1px solid #DDD;
   border-top: 0 none;
+  display: table;
   font-style: normal;
+  width: 100%;
 }
 
 .xRichTextEditor .gwt-RichTextArea {

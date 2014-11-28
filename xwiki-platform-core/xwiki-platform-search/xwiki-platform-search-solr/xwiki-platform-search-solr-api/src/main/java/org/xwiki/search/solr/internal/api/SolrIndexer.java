@@ -21,6 +21,8 @@ package org.xwiki.search.solr.internal.api;
 
 import org.xwiki.component.annotation.Role;
 import org.xwiki.model.reference.EntityReference;
+import org.xwiki.search.solr.internal.job.IndexerJob;
+import org.xwiki.search.solr.internal.job.IndexerRequest;
 import org.xwiki.stability.Unstable;
 
 /**
@@ -54,4 +56,18 @@ public interface SolrIndexer
      * @param recurse indicate if children entities should be removed too
      */
     void delete(EntityReference reference, boolean recurse);
+
+    /**
+     * @return the number of element in the index/delete queue
+     */
+    int getQueueSize();
+
+    /**
+     * Start an indexing with specific criteria.
+     * 
+     * @param request the request to configure the indexing
+     * @return the created job to follow the progress
+     * @throws SolrIndexerException when failing to create the job
+     */
+    IndexerJob startIndex(IndexerRequest request) throws SolrIndexerException;
 }

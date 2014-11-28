@@ -1,4 +1,9 @@
-##
+###############################################################
+## Contains various standard Velocity macros automatically
+## loaded and usable everywhere (in Velocity).
+## 
+## Note that if you modify that file you will need to restart.
+###############################################################
 ##
 ## #template("name.vm")
 ## Searches for the given velocity template and interprets it.
@@ -210,6 +215,98 @@ $xwiki.getUserName("xwiki:${username}")
 
 
 ###
+###    displayUser
+###
+### Display the profile of a user (or a list of users) with an image
+###
+### @param arg Could be either a string, a reference or a list of them
+###
+#macro(displayUser $arg)
+  #set ($discard = $xwiki.ssfx.use('uicomponents/widgets/userpicker/userPicker.css'))
+  #if ($arg.iterator())
+    #set ($usersList = $arg)
+  #else
+    #set ($usersList = [$arg])
+  #end
+  <ul class="users">
+    #foreach($user in $usersList)
+      ## Since we accept both a String or an EntityReference as input, we first check if we have a Entity Reference
+      ## to a Document and if not then we resolve the String to convert it to a Document Reference.
+      #set ($userReference = $user.extractReference('DOCUMENT'))
+      #if (!$userReference)
+        #set ($userReference = $services.model.resolveDocument($user, 'user/current'))
+      #end
+      #set ($userName = ${userReference.name})
+      #getUserAvatarURL($userReference $avatarURL 30)
+      <li class="user">
+       <div class="user-avatar-wrapper">
+         ## The string returned by XWiki#getUserName() is XML encoded.
+         <img src="${escapetool.xml($avatarURL.url)}" class="icon"
+           alt="${xwiki.getUserName("XWiki.${userName}", false)}" />
+      </div>
+      <div class="user-name">${xwiki.getUserName("XWiki.${userName}")}</div>
+        <div>
+          <span class="user-alias">${escapetool.xml($userReference.name)}</span>
+          ## Display the wiki only for local users.
+          #if ($userReference.wikiReference.name != $xcontext.getMainWikiName())
+            <span class="user-wiki">${escapetool.xml($userReference.wikiReference.name)}</span>
+          #end
+        </div>
+      </li>
+    #end
+  </ul>
+#end
+
+
+###
+###    displayGroup
+###
+### Display the profile of a group (or a list of groups) with an image
+###
+### @param arg Could be either a string, a reference or a list of them
+###
+#macro(displayGroup $arg)
+  #set ($discard = $xwiki.ssfx.use('uicomponents/widgets/userpicker/userPicker.css', true))
+  #if ($arg.iterator())
+    #set ($groupsList = $arg)
+  #else
+    #set ($groupsList = [$arg])
+  #end
+  <ul class="users">
+    #foreach ($group in $groupsList)
+      ## Since we accept both a String or an EntityReference as input, we first check if we have a Entity Reference
+      ## to a Document and if not then we resolve the String to convert it to a Document Reference.
+      #set ($groupReference = $group.extractReference('DOCUMENT'))
+      #if (!$groupReference)
+        #set ($groupReference = $services.model.resolveDocument($user, 'group/current'))
+      #end
+      #set ($groupTitle = $xwiki.getDocument($groupReference).plainTitle)
+      #if ("$!groupTitle" == '')
+        #set ($groupTitle = $groupReference.name)
+      #end
+      <li class="user">
+        <div class="user-avatar-wrapper">
+          #getUserAvatarURL($groupReference $avatarURL 30)
+          <img src="${escapetool.xml($avatarURL.url)}" class="icon"
+            alt="${escapetool.xml($groupTitle)}" />
+        </div>
+        <div class="user-name">
+          <a href="${escapetool.xml($xwiki.getURL($groupReference))}">${escapetool.xml($groupTitle)}</a>
+        </div>
+    <div>
+    <span class="user-alias">${escapetool.xml($groupReference.name)}</span>
+      ## Display the wiki only for local groups.
+      #if ($groupReference.wikiReference.name != $xcontext.getMainWikiName())
+        <span class="user-wiki">${escapetool.xml($groupReference.wikiReference.name)}</span>
+      #end
+    </div>
+  </li>
+  #end
+  </ul>
+#end
+
+
+###
 ###    useravatar
 ###
 ### Display the avatar of a user, or a standard image if the user has no avatar
@@ -224,7 +321,7 @@ $xwiki.getUserName("xwiki:${username}")
   #else
     #set ($url = $xwiki.getSkinFile('icons/xwiki/noavatar.png', true))
   #end
-  #if (!$profileDoc.isNew() && $profileDoc.attachmentList.size() > 0)
+  #if ($profileDoc && !$profileDoc.isNew() && $profileDoc.attachmentList.size() > 0)
     #set ($profileObj = $profileDoc.getObject('XWiki.XWikiUsers', 0))
     #set ($avatarFileName = $profileObj.getProperty('avatar').value)
     #if ("$!avatarFileName" != '')
@@ -1244,12 +1341,15 @@ ${Msz}Mb##
  * @param options the livetable options.
  *#
 #macro(livetable $divid $collist $colprops $options)
+## Open wiki syntax wrappers.
+#if("$!options.outputOnlyHtml" != 'true')
 ## Do not indent:
 #if($xwiki.getCurrentContentSyntaxId() != "xwiki/1.0")
 
 
 {{html}}
 #else {pre} #end
+#end
   ##
   ## SX deps.
   ##
@@ -1264,38 +1364,61 @@ ${Msz}Mb##
   #if("$!options.rowCount" != '') #set($count = $options.rowCount) #else #set($count = 15) #end
   #if("$!options.maxPages" != '') #set($maxPages = $options.maxPages) #else #set($maxPages = 10) #end
   #if("$!options.selectedColumn" != '') #set($selectedColumn = $options.selectedColumn) #end
-  #if("$!options.callback" != '') #set($callback = $options.callback) #end
+  #if("$!options.callback" != '') #set($callback = $options.callback) #else #set($callback = '') #end
   #if("$!options.tagCloud" == '' || $options.tagCloud == false) #set($tagcloud=false) #else #set($tagcloud = true) #end
+  #if ($options.selectedTags && $options.selectedTags.size() > 0)
+    #set ($selectedTags = $options.selectedTags)
+  #else
+    #set ($selectedTags = [])
+  #end
   #if("$!options.javascriptName" != '') #set($jsName = $options.javascriptName) #else #set($jsName = "livetable_$divid") #end
   #if("$!options.topFilters" != '') #set($topfilters = $options.topFilters) #end
   #if("$options.pageSize" == '' || $!options.pageSize == false) #set($hasPageSize=false) #else #set($hasPageSize = true) #end
   #if("$!options.pageSizeBounds" != '') #set($pageSizeBounds = $options.pageSizeBounds) #end
+  #if("$!options.queryFilters" != '')
+    #set ($queryFilters = $!options.queryFilters)
+  #else
+    #set ($queryFilters = 'currentlanguage,hidden')
+  #end
   #set($classname = "$!options.className")
-  #set($extraparams = "$!options.extraParams")
   ##
   ## Columns informations
   ##
-  #set($collist2 = '')
-  #set($classparams = '')
+  #set ($dataColumns = [])
+  #set ($classParams = {})
   #foreach($colname in $collist)
+    ## If the live table options don't specify which column to select then select the first non-special column.
     #if("$!selectedColumn" == '' && !$colname.startsWith('_'))
       #set($selectedColumn = $colname)
     #end
     #if($colname != '_actions')
-      #set($collist2 = "${collist2},${colname}")
+      #set ($discard = $dataColumns.add($colname))
       #set($propClassName = "$!{colprops.get($colname).get('class')}")
       #if($propClassName != '')
-        #set($classparams = "${classparams}&${colname}_class=${propClassName}")
+        #set ($discard = $classParams.put("${colname}_class", $propClassName))
+      #end
+      #set ($propMatchType = "$!colprops.get($colname).match")
+      #if ($propMatchType != '')
+        #set ($discard = $classParams.put("${colname}_match", $propMatchType))
       #end
     #end
   #end
-  #set($collist2 = $collist2.substring(1))
   #if("$!options.url" != '')
     #set($dataurl = $options.url)
-  #elseif("$!options.resultPage" != '')
-    #set($dataurl = $xwiki.getURL($options.resultPage, 'get', "outputSyntax=plain&transprefix=${transprefix}&classname=$!{classname}&collist=${collist2}&$!{extraparams}${classparams}") )
   #else
-    #set($dataurl = $xwiki.getURL('XWiki.LiveTableResults', 'get', "outputSyntax=plain&transprefix=${transprefix}&classname=$!{classname}&collist=${collist2}$!{extraparams}${classparams}"))
+    #set ($parameters = {
+      'outputSyntax': 'plain',
+      'transprefix': $transprefix,
+      'classname': $classname,
+      'collist': $stringtool.join($dataColumns, ','),
+      'queryFilters': $queryFilters
+    })
+    #set ($discard = $parameters.putAll($classParams))
+    #set ($resultPage = $options.resultPage)
+    #if ("$!resultPage" == '')
+      #set ($resultPage = 'XWiki.LiveTableResults')
+    #end
+    #set ($dataurl = $xwiki.getURL($resultPage, 'get', "$escapetool.url($parameters)&$!options.extraParams"))
   #end
   ##
   ## HTML Table
@@ -1448,6 +1571,7 @@ ${Msz}Mb##
     </tr>
     <tr>
       <td class="xwiki-livetable-pagination">
+        <span class="xwiki-livetable-limits"></span>
         <span class="controlPagination">
           <a title="$services.localization.render('platform.livetable.paginationPagePrevTitle')" class="prevPagination" href="#"><span class="hidden">$services.localization.render('platform.livetable.paginationPagePrevTitle')</span></a>
           <a title="$services.localization.render('platform.livetable.paginationPageNextTitle')" class="nextPagination" href="#"><span class="hidden">$services.localization.render('platform.livetable.paginationPageNextTitle')</span></a>
@@ -1466,27 +1590,31 @@ ${Msz}Mb##
   //<![CDATA[
 (function() {
   function startup() {
+    // Make sure the Livetable widgets exists (It does not in the WYSIWYG for example).
     if (XWiki && XWiki.widgets && XWiki.widgets.LiveTable) {
-      // Make sure the Livetable widgets exists (It does not in the WYSIWYG for example).
-    #if($callback)
-      window["$jsName"] = new XWiki.widgets.LiveTable("$dataurl", "${divid}", $callback ,{
-                           "maxPages":$maxPages
-                        ,"limit":$count
-       #if($hasTopFilters),"filterNodes" : [$("${divid}").down(".xwiki-livetable-display-filters"), $('${divid}-topfilters')]#end
-       #if($hasPageSize && "$!pageSizeBounds" != ''),"pageSizeBounds" : $pageSizeBounds#end
-              });
-    #else
-      window["$jsName"] = new XWiki.widgets.LiveTable("$dataurl", "${divid}", #livetablecallback($divid $collist $colprops $transprefix), {
-                           "maxPages":$maxPages
-                        ,"limit":$count
-       #if($hasTopFilters),"filterNodes" : [$("${divid}").down(".xwiki-livetable-display-filters"), $('${divid}-topfilters')]#end
-       #if($hasPageSize && "$!pageSizeBounds" != ''),"pageSizeBounds" : $pageSizeBounds#end
-              });
-    #end
-    #if($!hasPageSize)
-      document.observe("xwiki:livetable:${divid}:loadingEntries", function() { $('${divid}-pagesize').addClassName("hidden"); } );
-      document.observe("xwiki:livetable:${divid}:loadingComplete", function() { $('${divid}-pagesize').removeClassName("hidden"); } );
-    #end
+      #set ($liveTableParams = {
+        'maxPages': $maxPages,
+        'limit': $count,
+        'selectedTags': $selectedTags
+      })
+      #if ($hasTopFilters)
+        // Specify the filter nodes using identifiers or CSS selectors.
+        #set ($discard = $liveTableParams.put('filterNodes', ["$escapetool.h$divid .xwiki-livetable-display-filters",
+          "${divid}-topfilters"]))
+      #end
+      #if ($hasPageSize && "$!pageSizeBounds" != '')
+        #set ($discard = $liveTableParams.put('pageSizeBounds', $pageSizeBounds))
+      #end
+      #set ($callbackParam = "#livetablecallback($divid $collist $colprops $transprefix), ")
+      #if ($!callback != '')
+        #set ($callbackParam = "$callback, ")
+      #end
+      window["$jsName"] = new XWiki.widgets.LiveTable("$dataurl", "${divid}",
+        $callbackParam$jsontool.serialize($liveTableParams));
+      #if ($hasPageSize)
+        document.observe("xwiki:livetable:${divid}:loadingEntries", function() { $('${divid}-pagesize').addClassName("hidden"); } );
+        document.observe("xwiki:livetable:${divid}:loadingComplete", function() { $('${divid}-pagesize').removeClassName("hidden"); } );
+      #end
       return true;
     }
     return false;
@@ -1496,11 +1624,13 @@ ${Msz}Mb##
 })();
    //]]>
   </script>
-</div> ## xwiki-livetable-container
-  #if($xwiki.getCurrentContentSyntaxId() != "xwiki/1.0"){{/html}}
+</div>## xwiki-livetable-container
+## Close wiki syntax wrappers. Do not modify the indentation below or it will generate unwanted paragraphs!
+#if("$!options.outputOnlyHtml" != 'true')#if($xwiki.getCurrentContentSyntaxId() != "xwiki/1.0"){{/html}}
 
-#else {/pre} #end
-#end
+#else{/pre}#end##
+#end## end-wrappers
+#end## end-livetable-macro
 
 #**
  * Internal macro - Used by the livetable macro to generate a JavaScript anonymous function
@@ -1613,13 +1743,10 @@ function (row, i, table) {
       #end
     #end
   #end
-  }
-  else {
-    var page = row["doc_fullName"];
-    var dp = page.indexOf(':');
-    var p = page.indexOf('.');
-    var space = (dp > 0) ? page.substring(dp + 1, p) : page.substring(0, p);
-    var name = page.substring(p + 1);
+  } else {
+    var documentReference = XWiki.Model.resolve(row['doc_fullName'] || '', XWiki.EntityType.DOCUMENT);
+    var pageName = documentReference.name;
+    var spaceName = documentReference.parent ? documentReference.parent.name : '';
     #foreach($colname in $collist)
       // $colname
       #set($colprop = $colprops.get($colname))
@@ -1630,9 +1757,9 @@ function (row, i, table) {
          #set($jscolname = $colname)
         #end
         #if($jscolname == "doc_name")
-          tr.insert(new Element("td").update(name + "*"));
+          tr.insert(new Element("td").update(pageName + "*"));
         #elseif($jscolname == "doc_space")
-          tr.insert(new Element("td").update(space));
+          tr.insert(new Element("td").update(spaceName));
         #else
           tr.insert(new Element("td").update(" "));
         #end
@@ -1929,10 +2056,16 @@ function (row, i, table) {
     loading.style.height = field.offsetHeight + 'px';
     field.parentNode.insertBefore(loading, field);
     var removeLoadingAnimation = function() {
-      // Remove the loading animation after the WYSIWYG module has been loaded.
-      Wysiwyg.onModuleLoad(function() {
+      // Remove the loading animation after the editor code has been loaded or if it can't be loaded.
+      var callback = function() {
         loading.parentNode.removeChild(loading);
-      });
+      };
+      if (typeof Wysiwyg == 'object' && Wysiwyg) {
+        Wysiwyg.onModuleLoad(callback);
+      } else {
+        field.style.visibility = 'visible';
+        callback();
+      }
       return true;
     };
     (XWiki.domIsLoaded && removeLoadingAnimation()) || document.observe('xwiki:dom:loaded', removeLoadingAnimation);
@@ -1952,8 +2085,6 @@ function (row, i, table) {
 ## NOTE: We can't defer the SmartClient loading because it uses document.write() to load stylesheets in IE.
 $xwiki.jsfx.use("js/smartclient/initsc.js", {'forceSkinAction': true, 'defer': false})
 $xwiki.jsfx.use("js/smartclient/modules/ISC_Core.js", {'defer': false})
-## TODO: remove the following line when http://forums.smartclient.com/showthread.php?t=3097 will be fixed
-$xwiki.jsfx.use("js/smartclient/overwritesc.js", {'defer': false})
 $xwiki.jsfx.use("js/smartclient/modules/ISC_Foundation.js", {'defer': false})
 $xwiki.jsfx.use("js/smartclient/modules/ISC_Containers.js", {'defer': false})
 $xwiki.jsfx.use("js/smartclient/modules/ISC_Grids.js", {'defer': false})
@@ -1984,7 +2115,12 @@ $xwiki.jsfx.use("js/xwiki/wysiwyg/xwe/XWikiWysiwyg.js", {'forceSkinAction': true
 #if($requestErrors && $requestErrors.containsKey($fieldId))
 #set($fieldError = $requestErrors.get($fieldId))
 #if($fieldError)
-#set($ok = $parameters.put('convertInput', false))
+#set($ok = $parameters.put('inputURL', $editedDocument.getURL('edit', $escapetool.url({
+  'xpage': 'wysiwyginput',
+  'token': $services.csrf.token,
+  'key': $request.key,
+  'field': $fieldId
+}))))
 #error("${fieldId}: ${fieldError.message}")
 #set($ok = $requestErrors.remove($fieldId))
 #if($requestErrors.isEmpty())
@@ -2045,7 +2181,11 @@ var $jsVarName = {
 #end
 #set($ok = $parameters.put('syntax', $editedDocument.syntax.toIdString()))
 #set($ok = $parameters.put('convertInput', true))
-#set($ok = $parameters.put('inputURL', $editedDocument.getURL('edit', "xpage=wysiwyginput&token=${services.csrf.getToken()}")))
+#set($ok = $parameters.put('inputURL', $editedDocument.getURL('edit', $escapetool.url({
+  'xpage': 'wysiwyginput',
+  'token': $services.csrf.token,
+  'skin': $xwiki.getSkin()
+}))))
 #if($full)
   #set($ok = $parameters.put('displayTabs', $services.wysiwyg.config.isSourceEditorEnabled()))
   #if($parameters.displayTabs)
@@ -2100,11 +2240,13 @@ var $jsVarName = {
 //<![CDATA[
 (function() {
   var init = function() {
-    Wysiwyg.onModuleLoad(function() {
+    // Fail safe if the editor can't be loaded.
+    var editorCanBeLoaded = typeof Wysiwyg == 'object' && Wysiwyg;
+    editorCanBeLoaded && Wysiwyg.onModuleLoad(function() {
       new WysiwygEditor($jsVarName);
       $jsVarName = undefined;
     });
-    return true;
+    return editorCanBeLoaded;
   };
   (XWiki.domIsLoaded && init()) || document.observe('xwiki:dom:loaded', init);
 })(XWiki || {});
@@ -2247,7 +2389,7 @@ var $jsVarName = {
   #if ($name == '')
     #set ($name = $services.localization.render("$!{options.translationPrefix}${item.id}"))
   #end
-  $level (% class="${class}" %){{html}}<a #if ("$!{item.url}" != '')href="$item.url"#{end}>$name</a>{{/html}}
+  $level (% id="vertical-menu-${item.id}" class="${class}" %){{html}}<a #if ("$!{item.url}" != '')href="$item.url"#{end}>$name</a>{{/html}}
   #if ($hasChildren)
     #foreach ($child in $item.children)
       #verticalNavigationItem($child $level.concat('*') $options)
@@ -2285,22 +2427,16 @@ var $jsVarName = {
     #end
     #break($macro)
   #end
-  #set ($browserVariants = ['-moz-', '-o-', ''])
-  #set ($browserVariantsWithLegacySyntax = ['-webkit-'])
   #set ($colors = '')
   #set ($position = '')
-  #set ($legacyPosition = '')
   #if ($gradientData.angle)
     #if ($stringtool.indexOfAny($gradientData.angle, 'top', 'right', 'bottom', 'left') != -1)
       #set ($position = "to $!{gradientData.angle}")
-      #set ($legacyPosition = $stringtool.replaceEach($gradientData.angle, ['top', 'right', 'bottom', 'left'], ['bottom', 'left', 'top', 'right']))
     #else
       #set ($position = "$!{gradientData.angle}")
-      #set ($legacyPosition = "$!{gradientData.angle}")
     #end
   #elseif ($gradientData.to)
     #set ($position = "to $!{gradientData.to}")
-    #set ($legacyPosition = $stringtool.replaceEach($gradientData.to, ['top', 'right', 'bottom', 'left'], ['bottom', 'left', 'top', 'right']))
   #end
   #foreach ($colorEntry in $gradientData.colors)
     #set ($colors = "$!{colors}, $!{colorEntry.color} $!{colorEntry.position}")
@@ -2308,12 +2444,7 @@ var $jsVarName = {
   #if ("$!{colors}" != '' && "$!{position}" == '')
     #set ($colors = $colors.substring(2))
   #end
-  #foreach ($bvar in $browserVariantsWithLegacySyntax)
-    background-image:#if ("$!{icon}" != '') $icon,#end ${bvar}linear-gradient($!{legacyPosition}$!{colors});
-  #end
-  #foreach ($bvar in $browserVariants)
-    background-image:#if ("$!{icon}" != '') $icon,#end ${bvar}linear-gradient($!{position}$!{colors});
-  #end
+  background-image:#if ("$!{icon}" != '') $icon,#end linear-gradient($!{position}$!{colors});
 #end
 ##
 ##
@@ -2342,7 +2473,7 @@ var $jsVarName = {
  *#
 #macro (css3_boxSizing $value)
   #if ("$!{value}" != '')
-    #set ($browserVariants = ['-moz-', '-webkit-', ''])
+    #set ($browserVariants = ['-moz-', ''])
     #foreach ($bvar in $browserVariants)
       ${bvar}box-sizing: $value;
     #end
@@ -2430,4 +2561,93 @@ $services.display.title($doc, {'displayerHint': 'default'})##
 #else##
 Recursive title display detected!##
 #end##
+#end
+
+#**
+ * Outputs the skin extension hooks, for both Stylesheet and JavaScript extensions. This is useful when the HTML response
+ * of an AJAX request needs to pull some CSS and JavaScript resources. The code that makes the AJAX request should move
+ * the 'includes' (i.e. the link and script tags) to the head of the HTML page after receiving the HTML response.
+ *#
+#macro (skinExtensionHooks)
+  #styleSheetExtensionHooks
+  #javaScriptExtensionHooks
+#end
+
+#**
+ * Hook for inserting CSS skin extensions.
+ *#
+#macro (styleSheetExtensionHooks)
+  ## - Skin JAR extension hook. Placed first to allow other skin extensions to override it.
+  <!-- com.xpn.xwiki.plugin.skinx.CssResourceSkinExtensionPlugin -->
+  ## - Skin file extension hook.
+  <!-- com.xpn.xwiki.plugin.skinx.CssSkinFileExtensionPlugin -->
+  ## - Skin extension hook, placed at the last to be able to override previous css rules with a Skin Extension Object
+  <!-- com.xpn.xwiki.plugin.skinx.CssSkinExtensionPlugin -->
+#end
+
+#**
+ * Hooks for inserting JavaScript skin extensions.
+ *#
+#macro (javaScriptExtensionHooks)
+  ## - Skin JAR extension hook. Placed first to allow other skin extensions to override it.
+  <!-- com.xpn.xwiki.plugin.skinx.JsResourceSkinExtensionPlugin -->
+  ## - Skin file extension hook.
+  <!-- com.xpn.xwiki.plugin.skinx.JsSkinFileExtensionPlugin -->
+  ## - Skin extension hook
+  <!-- com.xpn.xwiki.plugin.skinx.JsSkinExtensionPlugin -->
+#end
+
+#**
+ * Start a breadcrumb.
+ *
+ * Should be used in HTML.
+ *#
+#macro(breadcrumb_start)#end
+
+#**
+ * End of a breadcrumb
+ *
+ * Should be used in HTML.
+ *#
+#macro(breadcrumb_end)#end
+
+#**
+ * Display a line in the breadcrumb
+ *
+ * Should be used in HTML.
+ *#
+#macro(breadcrumb_line $link $title)<a href="$link">$title</a> <span class="separator">&raquo;</span> #end
+
+#**
+ * Display the current line in the breadcrumb
+ *
+ * Should be used in HTML.
+ *#
+#macro(breadcrumb_current_line $title)<span class="current">$title</span>#end
+
+###
+### Displays an exception.
+###
+### @param title the message to display to the user
+### @param exception the exception to display when the user clicks on the message
+#macro(displayException $title $exception)
+<div class="xwikirenderingerror" title="Click to get more details about the error" style="cursor: pointer;">
+  $title
+</div>
+<div class="xwikirenderingerrordescription hidden">
+  <pre>$exceptiontool.getStackTrace($exception)</pre>
+</div>
+#end
+
+###
+### Generically display exceptions that have not been handled at the right level and have now bubbled up to the UI.
+###
+### This is a convenience macro, see #displayException.
+###
+### @param exception The exception to format for displaying
+#macro(displayUnhandledException $exception)
+  #set ($sentence1 = 'Unexpected error.')
+  #set ($sentence2 = 'Contact your administrator or <a href="http://jira.xwiki.org">report the issue</a>.')
+  #set ($sentence3 = 'Click this box to get technical details.')
+  #displayException("${sentence1} ${sentence2} ${sentence3}", $exception)
 #end

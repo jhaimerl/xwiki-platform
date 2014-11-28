@@ -19,7 +19,6 @@
  */
 package org.xwiki.rendering.internal.macro.formula;
 
-import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 
@@ -31,11 +30,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.xwiki.bridge.DocumentAccessBridge;
 import org.xwiki.component.annotation.Component;
-import org.xwiki.component.manager.ComponentLookupException;
 import org.xwiki.component.manager.ComponentManager;
 import org.xwiki.formula.FormulaRenderer;
 import org.xwiki.formula.FormulaRenderer.FontSize;
 import org.xwiki.formula.FormulaRenderer.Type;
+import org.xwiki.model.reference.AttachmentReference;
 import org.xwiki.rendering.block.Block;
 import org.xwiki.rendering.block.ImageBlock;
 import org.xwiki.rendering.block.ParagraphBlock;
@@ -110,15 +109,14 @@ public class FormulaMacro extends AbstractMacro<FormulaMacroParameters>
         String rendererHint = this.configuration.getRenderer();
         FontSize size = parameters.getFontSize();
         Type type = parameters.getImageType();
-        Block result = null;
+        Block result;
         try {
             result = render(content, context.isInline(), size, type, rendererHint);
-        } catch (ComponentLookupException ex) {
-            this.logger.error("Invalid renderer: [" + rendererHint + "]. Falling back to the safe renderer.", ex);
+        } catch (MacroExecutionException ex) {
+            this.logger.debug("Failed to render content with the [{}] renderer. Falling back to the safe renderer.",
+                rendererHint, ex);
             try {
                 result = render(content, context.isInline(), size, type, this.configuration.getSafeRenderer());
-            } catch (ComponentLookupException ex2) {
-                this.logger.error("Safe renderer not found. No image generated. Returning plain text.", ex);
             } catch (IllegalArgumentException ex2) {
                 throw new MacroExecutionException(WRONG_CONTENT_ERROR);
             }
@@ -146,23 +144,38 @@ public class FormulaMacro extends AbstractMacro<FormulaMacroParameters>
      * @param imageType the specified resulting image type
      * @param rendererHint the hint for the renderer to use
      * @return the resulting block holding the generated image, or {@code null} in case of an error.
-     * @throws ComponentLookupException if no component with the specified hint can be retrieved
+     * @throws MacroExecutionException if no renderer exists for the passed hint or if that rendered failed to render
+     *         the formula
      * @throws IllegalArgumentException if the formula is not valid, according to the LaTeX syntax
      */
     private Block render(String formula, boolean inline, FontSize fontSize, Type imageType, String rendererHint)
-        throws ComponentLookupException, IllegalArgumentException
+        throws MacroExecutionException, IllegalArgumentException
     {
         try {
             FormulaRenderer renderer = this.manager.getInstance(FormulaRenderer.class, rendererHint);
             String imageName = renderer.process(formula, inline, fontSize, imageType);
-            String url = this.dab.getDocumentURL(null, "tex", null, null) + "/" + imageName;
+            // TODO: HACK!!
+            // We're going through the getAttachmentURL() API so that when the PdfURLFactory is used, the generated
+            // image is saved and then embedded in the exported PDF thanks to PDFURIResolver. In the future we need
+            // to remove this hack by introduce a proper Resource for generated image (say TemporaryResource),
+            // implement a TemporaryResourceSerializer<URL> and introduce a ResourceLoader interface and have it
+            // implemented for TemporaryResource...
+            AttachmentReference attachmentReference =
+                new AttachmentReference(imageName, this.dab.getCurrentDocumentReference());
+            String url = this.dab.getAttachmentURL(attachmentReference, false);
+            // Note that we have to replace the download action by the tex action since the getAttachmentURL() API
+            // will use the "download" action but when the generated URL is called by the browser it needs to point to
+            // the TexAction...
+            url = url.replace("/download/", "/tex/");
+            // TODO: end HACK!!
             ResourceReference imageReference = new ResourceReference(url, ResourceType.URL);
             ImageBlock result = new ImageBlock(imageReference, false);
             // Set the alternative text for the image to be the original formula
             result.setParameter("alt", formula);
             return result;
-        } catch (IOException ex) {
-            throw new ComponentLookupException("Failed to render formula using [" + rendererHint + "] renderer");
+        } catch (Exception e) {
+            throw new MacroExecutionException(
+                String.format("Failed to render formula using the [%s] renderer", rendererHint), e);
         }
     }
 

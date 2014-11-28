@@ -19,11 +19,9 @@
  */
 package org.xwiki.url.internal.standard;
 
-import org.apache.commons.lang3.tuple.Pair;
 import org.xwiki.component.annotation.Role;
 import org.xwiki.model.reference.WikiReference;
-import org.xwiki.stability.Unstable;
-import org.xwiki.url.internal.ExtendedURL;
+import org.xwiki.url.ExtendedURL;
 
 /**
  * Extracts the reference to the wiki pointed to by the specified {@link ExtendedURL} object.
@@ -32,15 +30,14 @@ import org.xwiki.url.internal.ExtendedURL;
  * @since 5.1M1
  */
 @Role
-@Unstable
 public interface WikiReferenceExtractor
 {
     /**
      * Extract the name of the wiki the URL is pointing to.
      *
      * @param url the URL from which to extract the wiki reference
-     * @return the wiki the URL is pointing to, returned as a {@link WikiReference} and whether the URL was actually a
-     *         path-based URL or not (if true then it was a path-based URL)
+     * @return the reference to the wiki pointed to by the passed URL
+     * @since 6.3M1 returns only a WikiReference (whereas before it was returning both a WikiReference and a boolean)
      */
-    Pair<WikiReference, Boolean> extract(ExtendedURL url);
+    WikiReference extract(ExtendedURL url);
 }

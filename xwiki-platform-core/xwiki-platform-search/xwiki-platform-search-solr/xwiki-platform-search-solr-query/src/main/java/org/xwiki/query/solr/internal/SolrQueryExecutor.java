@@ -19,6 +19,7 @@
  */
 package org.xwiki.query.solr.internal;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -27,6 +28,7 @@ import java.util.Map.Entry;
 import javax.inject.Inject;
 import javax.inject.Named;
 import javax.inject.Provider;
+import javax.inject.Singleton;
 
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.response.QueryResponse;
@@ -54,6 +56,7 @@ import org.xwiki.search.solr.internal.api.SolrInstance;
  */
 @Component
 @Named(SolrQueryExecutor.SOLR)
+@Singleton
 public class SolrQueryExecutor implements QueryExecutor
 {
     /**
@@ -106,7 +109,15 @@ public class SolrQueryExecutor implements QueryExecutor
             // TODO: good idea? Any confusion? Do we really needs something like this?
             // Reuse the Query.getNamedParameters() map to get extra parameters.
             for (Entry<String, Object> entry : query.getNamedParameters().entrySet()) {
-                solrQuery.set(entry.getKey(), String.valueOf(entry.getValue()));
+                Object value = entry.getValue();
+
+                if (value instanceof Iterable) {
+                    solrQuery.set(entry.getKey(), toStringArray((Iterable) value));
+                } else if (value != null && value.getClass().isArray()) {
+                    solrQuery.set(entry.getKey(), toStringArray(value));
+                } else {
+                    solrQuery.set(entry.getKey(), String.valueOf(value));
+                }
             }
 
             QueryResponse response = solrInstance.query(solrQuery);
@@ -124,6 +135,38 @@ public class SolrQueryExecutor implements QueryExecutor
         } catch (Exception e) {
             throw new QueryException("Exception while executing query", query, e);
         }
+    }
+
+    /**
+     * Converts an arbitrary array to an array containing its string representations.
+     * 
+     * @param array an array of arbitrary type, must not be null
+     * @return an array with the string representations of the passed array's items
+     */
+    private String[] toStringArray(Object array)
+    {
+        int length = Array.getLength(array);
+        String[] args = new String[length];
+        for (int i = 0; i < length; i++) {
+            args[i] = String.valueOf(Array.get(array, i));
+        }
+
+        return args;
+    }
+
+    /**
+     * Converts the given iterable object to an array containing its string representations.
+     * 
+     * @param iterable the iterable object, must not be null
+     * @return an array with the string representations of the passed iterable's items
+     */
+    private String[] toStringArray(Iterable iterable)
+    {
+        List<String> args = new ArrayList<String>();
+        for (Object obj : iterable) {
+            args.add(String.valueOf(obj));
+        }
+        return args.toArray(new String[args.size()]);
     }
 
     /**

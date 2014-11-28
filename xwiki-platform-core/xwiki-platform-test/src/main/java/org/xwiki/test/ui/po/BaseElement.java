@@ -51,8 +51,7 @@ public class BaseElement
 
     public BaseElement()
     {
-        ElementLocatorFactory finder =
-            new AjaxElementLocatorFactory(getDriver(), getUtil().getTimeout());
+        ElementLocatorFactory finder = new AjaxElementLocatorFactory(getDriver(), getUtil().getTimeout());
         PageFactory.initElements(finder, this);
     }
 
@@ -77,6 +76,27 @@ public class BaseElement
     public void waitUntilElementIsVisible(final By locator)
     {
         waitUntilElementsAreVisible(new By[] {locator}, true);
+    }
+
+    /**
+     * Wait until the element given by the locator is displayed. Give up after specified timeout (in seconds).
+     * <p/>
+     * Only use this API if you absolutely need a longer timeout than the default, otherwise use
+     * {@link #waitUntilElementIsVisible(org.openqa.selenium.By)}.
+     *
+     * @param locator the locator for the element to look for
+     * @param timeout the timeout after which to give up
+     * @since 5.4RC1
+     */
+    public void waitUntilElementIsVisible(final By locator, int timeout)
+    {
+        int currentTimeout = getUtil().getTimeout();
+        try {
+            getUtil().setTimeout(timeout);
+            waitUntilElementsAreVisible(new By[] {locator}, true);
+        } finally {
+            getUtil().setTimeout(currentTimeout);
+        }
     }
 
     /**
@@ -168,6 +188,32 @@ public class BaseElement
     }
 
     /**
+     * Waits until the given element has a non-empty value for an attribute.
+     *
+     * @param locator the element to wait on
+     * @param attributeName the name of the attribute to check
+     */
+    public void waitUntilElementHasNonEmptyAttributeValue(final By locator, final String attributeName)
+    {
+        getUtil().waitUntilCondition(new ExpectedCondition<Boolean>()
+        {
+            @Override
+            public Boolean apply(WebDriver driver)
+            {
+                try {
+                    WebElement element = driver.findElement(locator);
+                    return !element.getAttribute(attributeName).isEmpty();
+                } catch (NotFoundException e) {
+                    return false;
+                } catch (StaleElementReferenceException e) {
+                    // The element was removed from DOM in the meantime
+                    return false;
+                }
+            }
+        });
+    }
+
+    /**
      * Waits until the given element has a certain value for an attribute.
      * 
      * @param locator the element to wait on
@@ -225,7 +271,7 @@ public class BaseElement
 
     /**
      * Waits until the given element has a certain value as its inner text.
-     * 
+     *
      * @param locator the element to wait on
      * @param expectedValue the content value to wait for
      * @since 3.2M3
@@ -318,5 +364,39 @@ public class BaseElement
         } catch (WebDriverException e) {
             // Ignore.
         }
+    }
+
+    /**
+     * Waits until the provided javascript expression returns {@code true}.
+     * <p/>
+     * The wait is done while the expression returns {@code false}.
+     * 
+     * @param booleanExpression the javascript expression to wait for to return {@code true}. The expression must have a
+     *            {@code return} statement on the last line, e.g. {@code "return window.jQuery != null"}
+     * @param arguments any arguments passed to the javascript expression
+     * @throws IllegalArgumentException if the evaluated expression does not return a boolean result
+     * @see #executeJavascript(String, Object...)
+     * @since 6.2
+     */
+    public void waitUntilJavascriptCondition(final String booleanExpression, final Object... arguments)
+        throws IllegalArgumentException
+    {
+        getUtil().waitUntilCondition(new ExpectedCondition<Boolean>()
+        {
+            @Override
+            public Boolean apply(WebDriver driver)
+            {
+                boolean result = false;
+
+                Object rawResult = executeJavascript(booleanExpression, arguments);
+                if (rawResult instanceof Boolean) {
+                    result = (Boolean) rawResult;
+                } else {
+                    throw new IllegalArgumentException("The executed javascript does not return a boolean value");
+                }
+
+                return result;
+            }
+        });
     }
 }

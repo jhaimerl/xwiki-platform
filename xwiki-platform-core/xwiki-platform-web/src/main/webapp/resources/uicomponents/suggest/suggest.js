@@ -72,7 +72,11 @@ var XWiki = (function(XWiki){
     unifiedLoader: false,
     // The DOM node to use to display the loading indicator when in mode unified loader (it will receive a "loading" class name for the time of the loading)
     // Default is null, which falls back on the input itself. This option is used only when unifiedLoader is true.
-    loaderNode: null
+    loaderNode: null,
+    // A list of key codes for which to propagate the keyboard event.
+    // Useful when another keyboard event listener exists on the input field, even if it may be registered at a diferent level.
+    // By default, the handled key events do not propagate, the rest do. See #onKeyPress
+    propagateEventKeyCodes : []
   },
   sInput : "",
   nInputChars : 0,
@@ -96,7 +100,9 @@ var XWiki = (function(XWiki){
     // Clone default options from the prototype so that they are not shared and extend options with passed parameters
     this.options = Object.extend(Object.clone(this.options), param || { });
     if (typeof this.options.sources == 'object') {
-      // We are in multi-sources mode
+      // We are in multi-source mode. The display is different in this mode even if there is only one source. We need to
+      // set a flag to know that we are in this mode because we flatten the list of sources below.
+      this.isInMultiSourceMode = true;
       this.sources = this.options.sources;
     } else {
       // We are in mono-source mode
@@ -105,6 +111,13 @@ var XWiki = (function(XWiki){
 
     // Flatten sources
     this.sources = [ this.sources ].flatten().compact();
+
+    if (this.sources.length == 0) {
+      // We still need an empty (fake) source so that we display at least the 'No results' message.
+      this.sources.push({
+        script: function(value, callback) {callback([])}
+      });
+    }
 
     // Reset the container if the configured parameter is not valid
     if (!$(this.options.parentContainer)) {
@@ -138,7 +151,7 @@ var XWiki = (function(XWiki){
     this.onKeyUp = this.onKeyUp.bindAsEventListener(this);
     this.fld.observe("keyup", this.onKeyUp);
     this.onKeyPress = this.onKeyPress.bindAsEventListener(this);
-    if (Prototype.Browser.IE || Prototype.Browser.WebKit) {
+    if (Prototype.Browser.IE || Prototype.Browser.WebKit || browser.isIE11up) {
       this.fld.observe("keydown", this.onKeyPress);
     } else {
       this.fld.observe("keypress", this.onKeyPress);
@@ -202,29 +215,32 @@ var XWiki = (function(XWiki){
       return;
     }
     var key = event.keyCode;
+    var checkPropagation = true;
 
     switch(key) {
       case Event.KEY_RETURN:
-        if (this.aSuggestions.length == 1) {
+        if (!this.iHighlighted && this.aSuggestions.length == 1) {
           this.highlightFirst();
         }
         this.setHighlightedValue();
-        Event.stop(event);
         break;
       case Event.KEY_ESC:
         this.clearSuggestions();
-        Event.stop(event);
         break;
       case Event.KEY_UP:
         this.changeHighlight(key);
-        Event.stop(event);
         break;
       case Event.KEY_DOWN:
         this.changeHighlight(key);
-        Event.stop(event);
         break;
       default:
+        checkPropagation = false;
         break;
+    }
+
+    // Stop propagation for the keys we have handled, unless otherwise specified in the options.
+    if (checkPropagation && this.options.propagateEventKeyCodes && this.options.propagateEventKeyCodes.indexOf(key) == -1) {
+      Event.stop(event);
     }
   },
 
@@ -300,32 +316,54 @@ var XWiki = (function(XWiki){
 
     for (var i=0;i<this.sources.length;i++) {
       var source = this.sources[i];
-
-      var url = source.script + source.varname + "=" + encodeURIComponent(this.fld.value.strip());
-      var method = source.method || "get";
-      var headers = {};
-      if (source.json) {
-        headers.Accept = "application/json";
+      if (typeof source.script == 'function') {
+        this.fld.addClassName('loading');
+        source.script(this.fld.value.strip(), function(suggestions) {
+          if (requestId == this.latestRequest) {
+            this.aSuggestions = suggestions || [];
+            suggestions && this.createList(this.aSuggestions, source);
+            this.fld.removeClassName('loading');
+          }
+        }.bind(this));
       } else {
-        headers.Accept = "application/xml";
+        this.doAjaxRequest(source, requestId, ajaxRequestParameters);
       }
-
-      // Allow the default request parameters to be overwritten.
-      var defaultAjaxRequestParameters = {
-        method: method,
-        requestHeaders: headers,
-        onCreate: this.fld.addClassName.bind(this.fld, 'loading'),
-        onSuccess: this.setSuggestions.bindAsEventListener(this, source, requestId),
-        onFailure: function (response) {
-          new XWiki.widgets.Notification("$services.localization.render('core.widgets.suggest.transportError')" + response.statusText, "error", {timeout: 5});
-        },
-        onComplete: this.fld.removeClassName.bind(this.fld, 'loading')
-      }
-      // Inject a reference to the (cloned) default AJAX request parameters to be able
-      // to access the defaults even when they are overwritten by the provided values.
-      defaultAjaxRequestParameters.defaultValues = Object.clone(defaultAjaxRequestParameters);
-      new Ajax.Request(url, Object.extend(defaultAjaxRequestParameters, ajaxRequestParameters || {}));
     }
+  },
+
+  /**
+   * Fire the AJAX request that will get the suggestions from the specified source.
+   *
+   * @param source the source to get the suggestions from
+   * @param requestId request identifier, used to ensure that only the latest request is handled, for improved performance
+   * @param ajaxRequestParameters optional AJAX request parameters, in case you need to overwrite the defaults
+   */
+  doAjaxRequest: function (source, requestId, ajaxRequestParameters)
+  {
+    var url = source.script + (source.script.indexOf('?') < 0 ? '?' : '&') + source.varname + "=" + encodeURIComponent(this.fld.value.strip());
+    var method = source.method || "get";
+    var headers = {};
+    if (source.json) {
+      headers.Accept = "application/json";
+    } else {
+      headers.Accept = "application/xml";
+    }
+
+    // Allow the default request parameters to be overwritten.
+    var defaultAjaxRequestParameters = {
+      method: method,
+      requestHeaders: headers,
+      onCreate: this.fld.addClassName.bind(this.fld, 'loading'),
+      onSuccess: this.setSuggestions.bindAsEventListener(this, source, requestId),
+      onFailure: function (response) {
+        new XWiki.widgets.Notification("$services.localization.render('core.widgets.suggest.transportError')" + response.statusText, "error", {timeout: 5});
+      },
+      onComplete: this.fld.removeClassName.bind(this.fld, 'loading')
+    }
+    // Inject a reference to the (cloned) default AJAX request parameters to be able
+    // to access the defaults even when they are overwritten by the provided values.
+    defaultAjaxRequestParameters.defaultValues = Object.clone(defaultAjaxRequestParameters);
+    new Ajax.Request(url, Object.extend(defaultAjaxRequestParameters, ajaxRequestParameters || {}));
   },
 
   /**
@@ -408,8 +446,11 @@ var XWiki = (function(XWiki){
       // FIXME this should be computed instead, since border might not always be 1px.
       var fieldWidth = this.fld.offsetWidth - 2;
       var containerWidth = this.options.width || fieldWidth;
+      var inputPositionLeft = this.fld.viewportOffset().left;
+      var browserWidth = $('body').getWidth();
 
-      if (this.options.align == 'left') {
+      // if the option is 'auto', we make sure that we have enough place to display it on the left. If not, it will go on the right.
+      if (this.options.align == 'left' || (this.options.align == 'auto' && inputPositionLeft + this.options.width < browserWidth)) {
         // Align the box on the left
         div.style.left = pos.left + "px";
       } else if (this.options.align == "center") {
@@ -450,7 +491,7 @@ var XWiki = (function(XWiki){
       });
     }
 
-    if (this.sources.length > 1) {
+    if (this.isInMultiSourceMode) {
       // If we are in multi-source mode, we need to prepare a sub-container for each of the suggestion source
       for (var i=0;i<this.sources.length;i++) {
 
@@ -469,7 +510,7 @@ var XWiki = (function(XWiki){
           }
           else {
             (this.options.loaderNode || this.fld).addClassName("loading");
-            this.resultContainer.down('.results' + source.id).addClassName('hidden loading');
+            this.resultContainer.down('.results' + source.id).addClassName('hidden').addClassName('loading');
           }
         }
         else {
@@ -479,7 +520,7 @@ var XWiki = (function(XWiki){
               sourceHeader = new Element('div', {'class':'sourceName'});
 
           if (this.options.unifiedLoader) {
-            sourceContainer.addClassName('hidden loading');
+            sourceContainer.addClassName('hidden').addClassName('loading');
           }
 
           if (typeof source.icon != 'undefined') {
@@ -542,35 +583,50 @@ var XWiki = (function(XWiki){
   },
 
   /**
-   * Create the HTML list of suggestions.
+   * Create the HTML list of suggestions and then notify that the suggest has been updated if all sources are loaded.
    *
    * @param {Object} arr
    * @param {Object} source the source for data for which to create this list of results.
    */
   createList: function(arr, source)
   {
+    this._createList(arr, source);
+
+    if (!this.isInMultiSourceMode || !this.resultContainer.down('.results.loading')) {
+      document.fire('xwiki:suggest:updated', {
+        'container' : this.container,
+        'suggest' : this
+      });
+    }
+  },
+
+  /**
+   * Create the HTML list of suggestions.
+   *
+   * @param {Object} arr
+   * @param {Object} source the source for data for which to create this list of results.
+   */
+  _createList: function(arr, source)
+  {
     this.isActive = true;
     var pointer = this;
 
     this.killTimeout();
 
-    // create holding div
-    //
-    if (this.sources.length > 1) {
-      var div = this.resultContainer.down(".results" + source.id);
-      if (arr.length > 0 || this.options.shownoresults) {
-        div.down('.sourceContent').removeClassName('loading');
-        this.resultContainer.down(".results" + source.id).removeClassName("hidden loading");
-      }
+    // Determine the source container.
+    if (this.isInMultiSourceMode) {
+      var sourceContainer = this.resultContainer.down('.results' + source.id);
+      sourceContainer.removeClassName('loading');
+      sourceContainer.down('.sourceContent').removeClassName('loading');
+      (arr.length > 0 || this.options.shownoresults) && sourceContainer.removeClassName('hidden');
 
       // If we are in mode "unified loader" (showing one loading indicator for all requests and not one per request)
       // and there aren't any source still loading, we remove the unified loading status.
-      if (this.options.unifiedLoader && !this.resultContainer.down("loading")) {
-        (this.options.loaderNode || this.fld).removeClassName("loading");
+      if (this.options.unifiedLoader && !this.resultContainer.down('.results.loading')) {
+        (this.options.loaderNode || this.fld).removeClassName('loading');
       }
-    }
-    else {
-      var div = this.resultContainer;
+    } else {
+      var sourceContainer = this.resultContainer;
     }
 
     // if no results, and shownoresults is false, go no further
@@ -579,9 +635,7 @@ var XWiki = (function(XWiki){
     }
 
     // Ensure any previous list of results for this source gets removed
-    if (div.down('ul')) {
-      div.down('ul').remove();
-    }
+    sourceContainer.down('ul') && sourceContainer.down('ul').remove();
 
     // Show the "hide suggestions" buttons
     this.container.select('.hide-button-wrapper').invoke('show');
@@ -601,10 +655,13 @@ var XWiki = (function(XWiki){
     //
     for (var i=0,len=arr.length;i<len;i++)
     {
+      var escapeHTML = function(value) {
+        return ((value || '') + '').escapeHTML();
+      };
       var valueNode = new Element('div')
-            .insert(new Element('span', {'class':'suggestId'}).update(arr[i].id))
-            .insert(new Element('span', {'class':'suggestValue'}).update(arr[i].value))
-            .insert(new Element('span', {'class':'suggestInfo'}).update(arr[i].info));
+            .insert(new Element('span', {'class':'suggestId'}).update(escapeHTML(arr[i].id)))
+            .insert(new Element('span', {'class':'suggestValue'}).update(escapeHTML(arr[i].value)))
+            .insert(new Element('span', {'class':'suggestInfo'}).update(escapeHTML(arr[i].info)));
 
       var item = new XWiki.widgets.XListItem( this.createItemDisplay(arr[i], source) , {
         containerClasses: 'suggestItem',
@@ -622,9 +679,9 @@ var XWiki = (function(XWiki){
                           'classes' : 'noSuggestion',
                           noHighlight :true }) );
     }
-    div.appendChild( list.getElement() );
+    sourceContainer.appendChild( list.getElement() );
 
-    this.suggest = div;
+    this.suggest = sourceContainer;
 
     // remove list after an interval
     var pointer = this;
@@ -640,17 +697,21 @@ var XWiki = (function(XWiki){
    * @param {Object} source the source for the suggeestion item data
    */
   createItemDisplay : function(data, source) {
+    var escapedInput = this.sInput ? this.sInput.escapeHTML() : this.sInput;
+    var escapedValue = ((data.value || '') + '').escapeHTML();
     // Output is either emphasized or raw value depending on source option.
-    var output = source.highlight ? this.emphasizeMatches(this.sInput, data.value) : data.value;
+    var output = source.highlight ? this.emphasizeMatches(escapedInput, escapedValue) : escapedValue;
     if (data.hint) {
-      output += "<span class='hint'>" + data.hint + "</span>";
+      var escapedHint = (data.hint + '').escapeHTML();
+      output += "<span class='hint'>" + escapedHint + "</span>";
     }
     if (!this.options.displayValue) {
       var displayNode = new Element("span", {'class':'info'}).update(output);
     } else {
+      var escapedInfo = ((data.info || '') + '').escapeHTML();
       var displayNode = new Element("div").insert(new Element('div', {'class':'value'}).update(output))
         .insert(new Element('div', {'class':'info'}).update("<span class='legend'>"
-        + this.options.displayValueText + "</span>" + data.info));
+        + this.options.displayValueText + "</span>" + escapedInfo));
     }
     // If the search result contains an icon information, we insert this icon in the result entry.
     if (data.icon) {
@@ -828,12 +889,15 @@ var XWiki = (function(XWiki){
   {
     if (this.iHighlighted && !this.iHighlighted.hasClassName('noSuggestion'))
     {
+      var text = function(element) {
+        return element.textContent || element.innerText;
+      };
       var icon = this.iHighlighted.down('img.icon');
       var data = {
         'suggest' : this,
-        'id': this.iHighlighted.down(".suggestId").innerHTML,
-        'value': this.iHighlighted.down(".suggestValue").innerHTML,
-        'info': this.iHighlighted.down(".suggestInfo").innerHTML,
+        'id': text(this.iHighlighted.down(".suggestId")),
+        'value': text(this.iHighlighted.down(".suggestValue")),
+        'info': text(this.iHighlighted.down(".suggestInfo")),
         'icon' : icon ? icon.src : ''
       }
 

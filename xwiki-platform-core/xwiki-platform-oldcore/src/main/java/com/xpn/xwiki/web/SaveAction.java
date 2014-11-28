@@ -19,9 +19,12 @@
  */
 package com.xpn.xwiki.web;
 
+import java.util.Locale;
+
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.velocity.VelocityContext;
+import org.xwiki.localization.LocaleUtils;
 
 import com.xpn.xwiki.XWiki;
 import com.xpn.xwiki.XWikiContext;
@@ -41,6 +44,11 @@ public class SaveAction extends PreviewAction
 {
     /** The identifier of the save action. */
     public static final String ACTION_NAME = "save";
+
+    public SaveAction()
+    {
+        this.waitForXWikiInitialization = true;
+    }
 
     /**
      * Saves the current document, updated according to the parameters sent in the request.
@@ -92,13 +100,13 @@ public class SaveAction extends PreviewAction
                 // Same as above, clone the object retrieved from the store cache.
                 tdoc = tdoc.clone();
             }
-            tdoc.setTranslation(1);
         }
 
         if (doc.isNew()) {
-            doc.setLanguage("");
-            if ((doc.getDefaultLanguage() == null) || (doc.getDefaultLanguage().equals(""))) {
-                doc.setDefaultLanguage(context.getWiki().getLanguagePreference(context));
+            doc.setLocale(Locale.ROOT);
+            if (doc.getDefaultLocale() == Locale.ROOT) {
+                doc.setDefaultLocale(LocaleUtils
+                    .toLocale(context.getWiki().getLanguagePreference(context), Locale.ROOT));
             }
         }
 

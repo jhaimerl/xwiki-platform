@@ -23,6 +23,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import javax.inject.Named;
+import javax.inject.Singleton;
+
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -41,12 +44,14 @@ import org.xwiki.xml.html.filter.ElementSelector;
  * represent empty lines, Open Office uses following element: <br/>
  * {@code<P STYLE="margin-bottom: 0in"><BR></P>} <br/>
  * These constructs when rendered on browsers doesn't resemble the original document at all, and when parsed
- * into xwiki/2.0 syntax the generated xwiki syntax is also invalid (obviously). The purpose of this filter is to clean
+ * into xwiki syntax the generated xwiki syntax is also invalid (obviously). The purpose of this filter is to clean
  * up such html content by merging consecutive paragraph sequences and appropriately inserting {@code<br/>} elements.
  * 
  * @version $Id$
  */
-@Component("officeimporter/paragraph")
+@Component
+@Named("officeimporter/paragraph")
+@Singleton
 public class ParagraphFilter extends AbstractHTMLFilter
 {
     @Override

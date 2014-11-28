@@ -33,10 +33,10 @@ import org.xwiki.bridge.DocumentAccessBridge;
 import org.xwiki.cache.DisposableCacheValue;
 import org.xwiki.component.manager.ComponentLookupException;
 import org.xwiki.component.manager.ComponentManager;
+import org.xwiki.localization.LocaleUtils;
 import org.xwiki.localization.Translation;
 import org.xwiki.localization.TranslationBundle;
 import org.xwiki.localization.internal.AbstractTranslationBundle;
-import org.xwiki.localization.wiki.internal.DefaultDocumentTranslationBundle;
 import org.xwiki.model.EntityType;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.DocumentReferenceResolver;
@@ -80,7 +80,7 @@ public class XWikiPreferencesWikiTranslationBundle extends AbstractTranslationBu
 
     private XWikiPreferencesTranslationBundle parent;
 
-    private Map<DocumentReference, DefaultDocumentTranslationBundle> bundles;
+    private Map<DocumentReference, XWikiPreferencesDocumentTranslationBundle> bundles;
 
     public XWikiPreferencesWikiTranslationBundle(String wiki, XWikiPreferencesTranslationBundle parent,
         ComponentManager componentManager) throws ComponentLookupException
@@ -105,7 +105,7 @@ public class XWikiPreferencesWikiTranslationBundle extends AbstractTranslationBu
                 Pattern.compile(this.wiki + ":XWiki.XWikiPreferences\\[\\d*\\]"), EntityType.OBJECT, preferences));
 
         this.events =
-            Arrays.<Event> asList(new XObjectPropertyAddedEvent(documentBundlesProperty),
+            Arrays.<Event>asList(new XObjectPropertyAddedEvent(documentBundlesProperty),
                 new XObjectPropertyUpdatedEvent(documentBundlesProperty));
 
         this.observation.addListener(this);
@@ -138,8 +138,8 @@ public class XWikiPreferencesWikiTranslationBundle extends AbstractTranslationBu
     {
         Set<DocumentReference> documents = getDocuments();
 
-        Map<DocumentReference, DefaultDocumentTranslationBundle> newBundles =
-            new LinkedHashMap<DocumentReference, DefaultDocumentTranslationBundle>(documents.size());
+        Map<DocumentReference, XWikiPreferencesDocumentTranslationBundle> newBundles =
+            new LinkedHashMap<DocumentReference, XWikiPreferencesDocumentTranslationBundle>(documents.size());
         for (DocumentReference document : documents) {
             newBundles.put(document, this.parent.getDocumentTranslationBundle(document));
         }
@@ -174,9 +174,15 @@ public class XWikiPreferencesWikiTranslationBundle extends AbstractTranslationBu
     {
         for (TranslationBundle bundle : this.bundles.values()) {
             Translation translation = bundle.getTranslation(key, locale);
-            if (translation != null) {
+            if (translation != null && translation.getLocale().equals(locale)) {
                 return translation;
             }
+        }
+
+        // Try parent locale
+        Locale parentLocale = LocaleUtils.getParentLocale(locale);
+        if (parentLocale != null) {
+            return getTranslation(key, parentLocale);
         }
 
         return null;

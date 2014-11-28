@@ -71,10 +71,12 @@ public class Util extends Api
      * 
      * @return the current date
      * @since 1.3 Milestone 2
+     * @deprecated use <code>$datetool.date</code> instead
      */
+    @Deprecated
     public Date getDate()
     {
-        return this.xwiki.getCurrentDate();
+        return new Date();
     }
 
     /**
@@ -84,10 +86,12 @@ public class Util extends Api
      * @param time time in milliseconds since 1970, 00:00:00 GMT
      * @return Date a date from a time in milliseconds since 01/01/1970 as a Java {@link Date} Object
      * @since 1.3 Milestone 2
+     * @deprecated use <code>$datetool.toDate(time)</code> instead
      */
+    @Deprecated
     public Date getDate(long time)
     {
-        return this.xwiki.getDate(time);
+        return new Date(time);
     }
 
     /**
@@ -129,8 +133,8 @@ public class Util extends Api
 
     /**
      * Output a BufferedImage object into the response outputstream. Once this method has been called, no further action
-     * is possible. Users should set {@code $context.setFinished(true)} to avoid template output. The image is served as
-     * image/jpeg.
+     * is possible. Users should set {@code $xcontext.setFinished(true)} to avoid template output. The image is served
+     * as image/jpeg.
      * 
      * @param image the BufferedImage to output
      * @throws java.io.IOException if the output fails

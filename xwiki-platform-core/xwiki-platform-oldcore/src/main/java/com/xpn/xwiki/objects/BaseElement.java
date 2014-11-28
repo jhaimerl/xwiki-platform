@@ -27,6 +27,7 @@ import org.xwiki.model.reference.EntityReference;
 import org.xwiki.model.reference.EntityReferenceSerializer;
 
 import com.xpn.xwiki.XWikiContext;
+import com.xpn.xwiki.doc.XWikiDocument;
 import com.xpn.xwiki.doc.merge.MergeConfiguration;
 import com.xpn.xwiki.doc.merge.MergeResult;
 import com.xpn.xwiki.internal.merge.MergeUtils;
@@ -50,8 +51,17 @@ public abstract class BaseElement<R extends EntityReference> implements ElementI
     /**
      * Reference to the document in which this element is defined (for elements where this make sense, for example for
      * an XClass or a XObject).
+     * 
+     * @since 5.3M1
      */
-    private DocumentReference documentReference;
+    protected DocumentReference documentReference;
+
+    /**
+     * The owner document, if this element was obtained from a document.
+     * 
+     * @since 5.3M1
+     */
+    protected transient XWikiDocument ownerDocument;
 
     /**
      * Free form name (for elements which don't point to a reference, for example for instances of {@link BaseProperty}
@@ -64,8 +74,7 @@ public abstract class BaseElement<R extends EntityReference> implements ElementI
     /**
      * Used to convert a proper Document Reference to a string but without the wiki name.
      */
-    protected EntityReferenceSerializer<String> localEntityReferenceSerializer = Utils.getComponent(
-        EntityReferenceSerializer.TYPE_STRING, "local");
+    private EntityReferenceSerializer<String> localEntityReferenceSerializer;
 
     /**
      * Used to build uid string for the getId() hash.
@@ -112,7 +121,7 @@ public abstract class BaseElement<R extends EntityReference> implements ElementI
     {
         // If the name is null then serialize the reference as a string.
         if (this.name == null && this.documentReference != null) {
-            this.name = this.localEntityReferenceSerializer.serialize(this.documentReference);
+            this.name = getLocalEntityReferenceSerializer().serialize(this.documentReference);
         }
 
         return this.name;
@@ -155,7 +164,7 @@ public abstract class BaseElement<R extends EntityReference> implements ElementI
     }
 
     /**
-     * @return return the LocalUidStringEntityReferenceSerializer to compute ids.
+     * @return the component used to build uid string for the getId() hash
      * @since 4.0M1
      */
     protected EntityReferenceSerializer<String> getLocalUidStringEntityReferenceSerializer()
@@ -166,6 +175,19 @@ public abstract class BaseElement<R extends EntityReference> implements ElementI
         }
 
         return this.localUidStringEntityReferenceSerializer;
+    }
+
+    /**
+     * @return the component used to convert a proper Document Reference to a string but without the wiki name.
+     * @since 6.3M1
+     */
+    protected EntityReferenceSerializer<String> getLocalEntityReferenceSerializer()
+    {
+        if (this.localEntityReferenceSerializer == null) {
+            this.localEntityReferenceSerializer = Utils.getComponent(EntityReferenceSerializer.TYPE_STRING, "local");
+        }
+
+        return this.localEntityReferenceSerializer;
     }
 
     /**
@@ -262,6 +284,8 @@ public abstract class BaseElement<R extends EntityReference> implements ElementI
         try {
             element = (BaseElement) super.clone();
 
+            element.setOwnerDocument(getOwnerDocument());
+
             // Make sure we clone either the reference or the name depending on which one is used.
             if (this.documentReference != null) {
                 element.setDocumentReference(getDocumentReference());
@@ -282,7 +306,7 @@ public abstract class BaseElement<R extends EntityReference> implements ElementI
     public void merge(ElementInterface previousElement, ElementInterface newElement, MergeConfiguration configuration,
         XWikiContext context, MergeResult mergeResult)
     {
-        setPrettyName(MergeUtils.mergeCharacters(((BaseElement) previousElement).getPrettyName(),
+        setPrettyName(MergeUtils.mergeOject(((BaseElement) previousElement).getPrettyName(),
             ((BaseElement) newElement).getPrettyName(), getPrettyName(), mergeResult));
     }
 
@@ -300,5 +324,25 @@ public abstract class BaseElement<R extends EntityReference> implements ElementI
         }
 
         return modified;
+    }
+
+    /**
+     * Set the owner document of this element.
+     * 
+     * @param ownerDocument The owner document.
+     * @since 5.3M1
+     */
+    public void setOwnerDocument(XWikiDocument ownerDocument)
+    {
+        this.ownerDocument = ownerDocument;
+    }
+
+    /**
+     * @return the owner document of this element.
+     * @since 5.3M1
+     */
+    public XWikiDocument getOwnerDocument()
+    {
+        return this.ownerDocument;
     }
 }

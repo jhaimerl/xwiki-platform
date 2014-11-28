@@ -141,6 +141,7 @@ public class DefaultSecurityEntryReader implements SecurityEntryReader
      * @throws org.xwiki.security.authorization.AuthorizationException if an issue arise while reading these rules
      *         from the wiki.
      */
+    @Override
     public SecurityRuleEntry read(SecurityReference entity) throws AuthorizationException
     {
         if (entity == null) {
@@ -307,9 +308,12 @@ public class DefaultSecurityEntryReader implements SecurityEntryReader
         }
 
         if (!isGlobalRightRequested && document != null) {
-            // Allow local rights to document creator
-            rules.add(new XWikiSecurityRule(CREATOR_RIGHTS, RuleState.ALLOW,
-                Collections.singleton(document.getCreatorReference()), null));
+            DocumentReference creator = document.getCreatorReference();
+
+            // Allow local rights to document creator (unless it is a public creator)
+            if (creator != null && !XWikiConstants.GUEST_USER.equals(creator.getName())) {
+                rules.add(new XWikiSecurityRule(CREATOR_RIGHTS, RuleState.ALLOW, Collections.singleton(creator), null));
+            }
         }
 
         return rules;

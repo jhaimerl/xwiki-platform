@@ -32,7 +32,7 @@
     #set($editor = "$!{escapetool.xml($request.getParameter('editor'))}")
     #if($editor == '')
       ## Determine the sheets using the default document translation because objects are accessible only from the default translation.
-      #if(!$services.sheet.getSheets($doc, $context.action).isEmpty())
+      #if(!$services.sheet.getSheets($doc, $xcontext.action).isEmpty())
         #set($editor = 'inline')
       #elseif (($xwiki.getUserPreference('editor') == 'Wysiwyg') && ($tdoc.syntax.toIdString() == 'xwiki/1.0' && !$tdoc.isAdvancedContent() || $services.wysiwyg.isSyntaxSupported($tdoc.syntax.toIdString())))
         #set($editor = 'wysiwyg')
@@ -60,7 +60,11 @@
   #template("xwikivars.vm")
   #template("layoutvars.vm")
   #template("htmlheader.vm")
-  #template("menuview.vm")
+  #if($displayMainMenu)
+    <div id="menuview">
+      #template("menuview.vm")
+    </div>
+  #end
   #template("header.vm")
   #if($editor == 'wiki' || $editor == 'wysiwyg')
     <form id="edit" method="post" action="$doc.getURL('preview')" class="withLock">
@@ -84,9 +88,11 @@
   <div class="leftsidecolumns">
   <div id="editcolumn" class="editor editor-${editor}">
   <div class="alleditcontent">
-  <div id="editmenu" class="actionmenu">
-  #template("editmenu.vm")
-  </div>
+  #if($displayEditMenu)
+    <div id="editmenu" class="actionmenu">
+      #template("editmenu.vm")
+    </div>
+  #end
   <div id="mainEditArea">
   #template("hierarchy.vm")
   #if (($editor == 'wiki' || $editor == 'wysiwyg') && !$request.section)

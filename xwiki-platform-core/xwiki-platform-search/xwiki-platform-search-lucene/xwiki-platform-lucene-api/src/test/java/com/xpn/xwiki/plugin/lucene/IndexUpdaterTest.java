@@ -60,7 +60,10 @@ import com.xpn.xwiki.test.AbstractBridgedXWikiComponentTestCase;
  */
 public class IndexUpdaterTest extends AbstractBridgedXWikiComponentTestCase
 {
-    private final static String INDEXDIR = "target/lucenetest";
+    /**
+     * Make sure the index folder is not reused.
+     */
+    private final static String INDEXDIR = "target" + File.separator + "lucenetest-" + new Date().getTime();
 
     private final Semaphore rebuildDone = new Semaphore(0);
 
@@ -179,7 +182,7 @@ public class IndexUpdaterTest extends AbstractBridgedXWikiComponentTestCase
             .will(returnValue(Arrays.asList("xwiki")));
 
         getContext().setWiki((XWiki) this.mockXWiki.proxy());
-        getContext().setDatabase("wiki");
+        getContext().setWikiId("wiki");
     }
 
     public void testCreateIndex() throws IOException
@@ -271,7 +274,7 @@ public class IndexUpdaterTest extends AbstractBridgedXWikiComponentTestCase
 
         assertEquals(1, t.totalHits);
 
-        SearchResults results = plugin.getSearchResultsFromIndexes("Ipsum", "target/lucenetest", null, getContext());
+        SearchResults results = plugin.getSearchResultsFromIndexes("Ipsum", INDEXDIR, null, getContext());
 
         assertEquals(1, results.getTotalHitcount());
     }

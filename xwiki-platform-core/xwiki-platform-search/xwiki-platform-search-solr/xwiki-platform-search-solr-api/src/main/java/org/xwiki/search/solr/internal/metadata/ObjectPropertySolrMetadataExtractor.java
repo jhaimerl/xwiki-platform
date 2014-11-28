@@ -56,7 +56,7 @@ public class ObjectPropertySolrMetadataExtractor extends AbstractSolrMetadataExt
     private SolrReferenceResolver resolver;
 
     @Override
-    public void setFieldsInternal(LengthSolrInputDocument solrDocument, EntityReference entityReference)
+    public boolean setFieldsInternal(LengthSolrInputDocument solrDocument, EntityReference entityReference)
         throws Exception
     {
         ObjectPropertyReference objectPropertyReference = new ObjectPropertyReference(entityReference);
@@ -67,15 +67,20 @@ public class ObjectPropertySolrMetadataExtractor extends AbstractSolrMetadataExt
 
         XWikiDocument document = getDocument(documentReference);
         BaseProperty<ObjectPropertyReference> objectProperty = document.getXObjectProperty(objectPropertyReference);
+        if (objectProperty == null) {
+            return false;
+        }
 
         // Object
         solrDocument.setField(FieldUtils.CLASS, localSerializer.serialize(classReference));
         solrDocument.setField(FieldUtils.NUMBER, objectReference.getObjectNumber());
 
         // Property
-        solrDocument.setField(FieldUtils.PROPERTY_NAME, objectReference.getName());
+        solrDocument.setField(FieldUtils.PROPERTY_NAME, objectPropertyReference.getName());
 
         setLocaleAndContentFields(documentReference, solrDocument, objectProperty);
+
+        return true;
     }
 
     /**
@@ -92,14 +97,9 @@ public class ObjectPropertySolrMetadataExtractor extends AbstractSolrMetadataExt
     protected void setLocaleAndContentFields(DocumentReference documentReference, SolrInputDocument solrDocument,
         BaseProperty<ObjectPropertyReference> objectProperty) throws Exception
     {
-        Locale defaultDocumentLocale = getLocale(documentReference);
-
         // Do the work for each locale.
         for (Locale documentLocale : getLocales(documentReference, null)) {
-            if (!documentLocale.equals(defaultDocumentLocale)) {
-                // The original document's locale is already set by the call to the addDocumentFields method.
-                solrDocument.addField(FieldUtils.LOCALES, documentLocale);
-            }
+            solrDocument.addField(FieldUtils.LOCALES, documentLocale);
 
             solrDocument.setField(FieldUtils.getFieldName(FieldUtils.PROPERTY_VALUE, documentLocale),
                 objectProperty.getValue());

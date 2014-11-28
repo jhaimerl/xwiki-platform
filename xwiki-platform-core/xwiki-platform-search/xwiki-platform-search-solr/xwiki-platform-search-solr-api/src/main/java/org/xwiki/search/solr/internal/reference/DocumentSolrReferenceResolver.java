@@ -99,7 +99,7 @@ public class DocumentSolrReferenceResolver extends AbstractSolrReferenceResolver
                 try {
                     document = getDocument(documentReference);
                 } catch (Exception e) {
-                    throw new SolrIndexerException(String.format("Failed to get document [%]", documentReference), e);
+                    throw new SolrIndexerException(String.format("Failed to get document [%s]", documentReference), e);
                 }
 
                 // Document translations
@@ -217,7 +217,7 @@ public class DocumentSolrReferenceResolver extends AbstractSolrReferenceResolver
 
         builder.append(QUERY_AND);
 
-        builder.append(FieldUtils.NAME);
+        builder.append(FieldUtils.NAME_EXACT);
         builder.append(':');
         builder.append(ClientUtils.escapeQueryChars(reference.getName()));
 

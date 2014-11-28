@@ -23,7 +23,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.apache.commons.lang3.StringUtils;
+import org.xwiki.localization.LocaleUtils;
 import org.xwiki.localization.Translation;
 
 /**
@@ -65,31 +65,6 @@ public abstract class AbstractCachedTranslationBundle extends AbstractTranslatio
     }
 
     /**
-     * @param locale the locale
-     * @return the parent locale
-     */
-    private Locale getParentLocale(Locale locale)
-    {
-        String language = locale.getLanguage();
-        String country = locale.getCountry();
-        String variant = locale.getVariant();
-
-        if (StringUtils.isEmpty(language)) {
-            return null;
-        }
-
-        if (StringUtils.isEmpty(country)) {
-            return Locale.ROOT;
-        }
-
-        if (StringUtils.isEmpty(variant)) {
-            return new Locale(language);
-        }
-
-        return new Locale(language, country);
-    }
-
-    /**
      * @param locale the Locale
      * @return the bundle containing translation for the passed Locale
      */
@@ -112,12 +87,14 @@ public abstract class AbstractCachedTranslationBundle extends AbstractTranslatio
         LocalizedTranslationBundle bundle = this.bundleCache.get(locale);
 
         if (bundle == null) {
-            bundle = createBundle(locale);
-            if (bundle == null) {
-                bundle = LocalizedTranslationBundle.EMPTY;
+            try {
+                bundle = createBundle(locale);
+                if (bundle != null) {
+                    this.bundleCache.put(locale, bundle);
+                }
+            } catch (Exception e) {
+                this.logger.error("Failed to get localization bundle", e);
             }
-
-            this.bundleCache.put(locale, bundle);
         }
 
         return bundle;
@@ -132,7 +109,7 @@ public abstract class AbstractCachedTranslationBundle extends AbstractTranslatio
         if (bundle != null) {
             translation = bundle.getTranslation(key);
             if (translation == null) {
-                Locale parentLocale = getParentLocale(locale);
+                Locale parentLocale = LocaleUtils.getParentLocale(locale);
                 if (parentLocale != null) {
                     translation = getTranslation(key, parentLocale);
                 }
@@ -148,5 +125,5 @@ public abstract class AbstractCachedTranslationBundle extends AbstractTranslatio
      * @param locale the locale
      * @return the bundle containing translation for the passed Locale
      */
-    protected abstract LocalizedTranslationBundle createBundle(Locale locale);
+    protected abstract LocalizedTranslationBundle createBundle(Locale locale) throws Exception;
 }

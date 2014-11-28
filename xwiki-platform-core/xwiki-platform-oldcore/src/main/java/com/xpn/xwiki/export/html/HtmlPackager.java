@@ -39,11 +39,9 @@ import org.xwiki.context.ExecutionContext;
 import org.xwiki.context.ExecutionContextException;
 import org.xwiki.context.ExecutionContextManager;
 import org.xwiki.environment.Environment;
-import org.xwiki.model.EntityType;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.DocumentReferenceResolver;
 import org.xwiki.model.reference.EntityReference;
-import org.xwiki.model.reference.EntityReferenceResolver;
 import org.xwiki.velocity.VelocityManager;
 
 import com.xpn.xwiki.XWikiContext;
@@ -207,9 +205,9 @@ public class HtmlPackager
         ZipEntry zipentry = new ZipEntry(zipname);
         zos.putNextEntry(zipentry);
 
-        String originalDatabase = context.getDatabase();
+        String originalDatabase = context.getWikiId();
         try {
-            context.setDatabase(doc.getDocumentReference().getWikiReference().getName());
+            context.setWikiId(doc.getDocumentReference().getWikiReference().getName());
             context.setDoc(doc);
             vcontext.put(VCONTEXT_DOC, doc.newDocument(context));
             vcontext.put(VCONTEXT_CDOC, vcontext.get(VCONTEXT_DOC));
@@ -218,13 +216,28 @@ public class HtmlPackager
             context.put(CONTEXT_TDOC, tdoc);
             vcontext.put(VCONTEXT_TDOC, tdoc.newDocument(context));
 
-            String content = context.getWiki().evaluateTemplate("view.vm", context);
+            String content = evaluateDocumentContent(context);
 
             zos.write(content.getBytes(context.getWiki().getEncoding()));
             zos.closeEntry();
         } finally {
-            context.setDatabase(originalDatabase);
+            context.setWikiId(originalDatabase);
         }
+    }
+
+    private String evaluateDocumentContent(XWikiContext context) throws IOException
+    {
+        context.getWiki().getPluginManager().beginParsing(context);
+        Utils.enablePlaceholders(context);
+        String content;
+        try {
+            content = context.getWiki().evaluateTemplate("view.vm", context);
+            content = Utils.replacePlaceholders(content, context);
+        } finally {
+            Utils.disablePlaceholders(context);
+        }
+        content = context.getWiki().getPluginManager().endParsing(content.trim(), context);
+        return content;
     }
 
     /**
@@ -315,15 +328,11 @@ public class HtmlPackager
         renderDocuments(zos, tempdir, urlf, context);
 
         // Add required skins to ZIP file
-        for (String skinName : urlf.getNeededSkins()) {
-            addSkinToZip(skinName, zos, urlf.getExportedSkinFiles(), context);
+        for (String skinName : urlf.getExportURLFactoryContext().getNeededSkins()) {
+            addSkinToZip(skinName, zos, urlf.getExportURLFactoryContext().getExportedSkinFiles(), context);
         }
 
-        // add "resources" folder
-        File file = new File(context.getWiki().getEngineContext().getRealPath("/resources/"));
-        addDirToZip(file, zos, "resources" + ZIPPATH_SEPARATOR, urlf.getExportedSkinFiles());
-
-        // Add attachments and generated skin files files to ZIP file
+        // Copy generated files in the ZIP file.
         addDirToZip(tempdir, zos, "", null);
 
         zos.setComment(this.description);

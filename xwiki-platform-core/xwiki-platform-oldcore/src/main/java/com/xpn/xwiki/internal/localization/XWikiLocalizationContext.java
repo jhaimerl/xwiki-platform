@@ -25,10 +25,11 @@ import javax.inject.Inject;
 import javax.inject.Provider;
 import javax.inject.Singleton;
 
-import org.apache.commons.lang3.LocaleUtils;
 import org.xwiki.component.annotation.Component;
+import org.xwiki.localization.LocaleUtils;
 import org.xwiki.localization.LocalizationContext;
 
+import com.xpn.xwiki.XWiki;
 import com.xpn.xwiki.XWikiContext;
 
 /**
@@ -54,9 +55,12 @@ public class XWikiLocalizationContext implements LocalizationContext
 
         XWikiContext xcontext = this.xcontextProvider.get();
         if (xcontext != null) {
-            String locale = xcontext.getWiki().getLanguagePreference(xcontext);
-            if (locale != null) {
-                currentLocale = LocaleUtils.toLocale(locale);
+            XWiki xwiki = xcontext.getWiki();
+            if (xwiki != null) {
+                String locale = xwiki.getLanguagePreference(xcontext);
+                if (locale != null) {
+                    currentLocale = LocaleUtils.toLocale(locale);
+                }
             }
         }
 
